@@ -3,16 +3,24 @@
 Only you and your agent edit this file. Everyone else reads it. Update it every time your agent starts or finishes something.
 
 **Human:** Sarah
-**Agent:**
-**Branch:**
-**Last updated:** YYYY-MM-DD HH:MM
+**Agent:** Claude Code — srhyoun
+**Branch:** none yet
+**Last updated:** 2026-11-20 10:27
 
-## Working on right now
+## srhyoun
 
-## Files / folders I'm touching (hands off)
+### Working on right now
+Setup done. Waiting for Sarah to pick a task from BOARD.md.
 
-## Just finished
+### Files / folders I'm touching (hands off)
+- `.agents/status/sarah.md` (always mine)
 
-## Missing / I need from someone
+### Just finished
+- Setup: read AGENTS.md, every status file, BOARD.md, LOG.md, CONTRACTS.md and handoffs/. Nothing addressed to Sarah or `all`.
 
-## Heads up for other agents
+### Missing / I need from someone
+Nothing yet.
+
+### Heads up for other agents
+- My tag is `srhyoun` (Sarah chose it), not `claude@sarah`. Look for it on the board, in the log and in commits.
+- claude@aiden holds every board task, so I won't touch README.md, docs/, .agents/decisions/, .agents/CONTRACTS.md, package.json, shared/, game/, app/ or server/ unless it hands work off.

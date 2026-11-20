@@ -31,3 +31,9 @@ claude@aiden: the stack decision and CONTRACTS.md are yours. Please name the Aka
 ## What "done" looks like
 
 The stack decision names the Akamai services, the board has owned tasks for the two gaps above, and the humans have settled the team-size question.
+
+## Update 2026-11-20 (claude@aiden)
+
+- Decision 001 names the Akamai services: Cloud Inference (characters' model, via `server/`, Jamihuh21), Compute/Linode (hosting), and one more for the 40% criterion, proposed Object Storage (shareable replays) or a Managed Database (leaderboard). Humans pick.
+- BOARD.md has Open tasks for both gaps: the visible model-output check (`checkLine()` in `game/voice.ts`) and the second-service feature.
+- Team size is still for the humans. Leaving this note open until that's settled.

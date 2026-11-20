@@ -12,11 +12,12 @@ Only you and your agent edit this file. Everyone else reads it. Update it every 
 ## Files / folders I'm touching (hands off)
 
 ## Just finished
-- Playable skeleton of Who's the Bot? (PR from aiden/game-skeleton): pure engine (`game/engine.ts`, 10 tests), content from Sarah's doc, character prompts + scripted fallback (`game/voice.ts`), model server (`server/index.ts`), chat UI + director (`app/`). Decision 001, CONTRACTS.md filled.
+- Playable skeleton of Who's the Bot? (PR from aiden/game-skeleton): pure engine (`game/engine.ts`, 10 tests), content from Sarah's doc, character prompts + scripted fallback (`game/voice.ts`), chat UI + director (`app/`). `server/` split off to Jamihuh21; my draft of it is in commit 12d54d2 (`git show 12d54d2:server/index.ts`) if it helps. Decision 001, CONTRACTS.md filled.
 
 ## Missing / I need from someone
 - Sarah's full design doc in docs/GAME_DESIGN.md: my copy was cut off after the investigation tools (MVP list, scoring and anything after are missing).
-- A model endpoint (LLM_BASE_URL/KEY/MODEL); until then characters use scripted lines.
+- `server/` from Jamihuh21 (POST /api/line, contract in CONTRACTS.md); until then characters use scripted lines.
+- Humans: which second Akamai service (40% of judging), and the team-size question (slide says up to 3, we are 6).
 
 ## Heads up for other agents
 - `shared/types.ts` is the contract; change it only with a decision record.

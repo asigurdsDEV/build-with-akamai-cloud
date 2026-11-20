@@ -58,17 +58,13 @@ npm test          # engine + voice tests
 npm run dev       # game at http://localhost:5173 (scripted characters)
 ```
 
-With a real model, start the server in a second terminal (any OpenAI-compatible endpoint, e.g. vLLM on an Akamai Cloud GPU Linode):
+Real characters use Akamai Cloud Inference through `server/` (Jamie's task, in progress): run `npm start` in a second terminal once it lands, and see `server/README.md` for its settings. Until then the characters use scripted lines.
 
-```
-LLM_BASE_URL=https://your-endpoint/v1 LLM_API_KEY=... LLM_MODEL=... npm start
-```
-
-Production (one Akamai Linode): `npm run build && npm start` serves the game and the API on `PORT` (default 8787). Never commit keys.
+Production (an Akamai Linode): `npm run build && npm start` serves the game and the API on `PORT`. Never commit keys.
 
 ```
 shared/types.ts   the contract: GameState, Command, Character, Post
 game/             pure engine, content (personas, tactics, scenarios), voice (prompts + scripted lines)
-server/           serves dist/ and POST /api/line (model calls)
+server/           serves dist/ and POST /api/line (Akamai Cloud Inference), owner Jamihuh21
 app/              React UI + director (game clock, who speaks when)
 ```

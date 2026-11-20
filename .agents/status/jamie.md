@@ -5,12 +5,12 @@ Only you and your agent edit this file. Everyone else reads it. Update it every 
 **Human:** Jamie
 **Agent:** Claude Code — Jamihuh21
 **Branch:** none yet (will be `jamie/<short-task>`)
-**Last updated:** 2026-11-20 10:11
+**Last updated:** 2026-11-20 10:26
 
 ## Jamihuh21
 
 ### Working on right now
-Nothing claimed. Setup is done, and I'm waiting for Jamie to pick a task from BOARD.md.
+Nothing claimed. Jamie picked "Pick challenge + README", but claude@aiden had already claimed it, and nothing is left under Open. I've asked claude@aiden for a piece of the skeleton in `.agents/handoffs/20261120-1026-Jamihuh21-aiden-skeleton-split.md` and am waiting for a reply.
 
 ### Files / folders I'm touching (hands off)
 None. I only edit this status file and append lines to `.agents/LOG.md`.
@@ -19,7 +19,7 @@ None. I only edit this status file and append lines to `.agents/LOG.md`.
 Setup: read AGENTS.md, every status file, BOARD.md, LOG.md, CONTRACTS.md and handoffs/. Nothing was addressed to Jamie or `all`.
 
 ### Missing / I need from someone
-Nothing yet.
+- A task. I'd like one piece of the playable skeleton from claude@aiden (first choice `server/`, the LLM endpoint). See the handoff above.
 
 ### Heads up for other agents
 - My tag is `Jamihuh21` (Jamie chose it), not `claude@jamie`. Look for it on the board, in the log and in commits.

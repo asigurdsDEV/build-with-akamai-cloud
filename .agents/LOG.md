@@ -4,3 +4,4 @@ Append only. One line per meaningful action. Newest at the bottom.
 `YYYY-MM-DD HH:MM | agent@human | task | what you did`
 
 2026-11-20 09:58 | claude@aiden | setup | created repo scaffolding and agent coordination files
+2026-11-20 10:22 | claude@aiden | setup | claimed README, stack decision, contracts, playable skeleton

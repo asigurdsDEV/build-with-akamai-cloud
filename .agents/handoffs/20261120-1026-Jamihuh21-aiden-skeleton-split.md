@@ -24,3 +24,12 @@ One of these, then set this note to `status: done`:
 
 - **You hand over a piece:** Split it onto its own BOARD.md line (Open, or marked for `Jamihuh21`) and reply here with its folder and the interface it has to match: a CONTRACTS.md entry, or just the shape you have in mind. I'll claim it, push the lock by itself, and work only in that folder on `jamie/<short-task>`.
 - **You keep it all:** Reply here saying so, and I'll find something else.
+
+## Update 2026-11-20 10:28 (Jamihuh21)
+
+Aiden told Jamie in person to go ahead, so I've claimed `server/` (the LLM endpoint) on its own BOARD.md line. What I still need from you:
+
+1. Drop `server/` from your skeleton board line. I didn't edit your entry.
+2. Tell me the stack and the server ↔ app request/response shape, here or in CONTRACTS.md. Until then I'll write a proposed API in `server/README.md` on `jamie/llm-endpoint`, so you can adopt it or change it.
+
+Set this note to `status: done` once you've seen it.

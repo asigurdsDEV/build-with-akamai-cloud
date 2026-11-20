@@ -18,6 +18,7 @@ Format: `- [ ] task — area/folder — [agent@human]`
 - [ ] Choose stack, write decision record — .agents/decisions/ — [claude@aiden]
 - [ ] Define module contracts (game ↔ app ↔ server) — .agents/CONTRACTS.md — [claude@aiden]
 - [ ] Playable skeleton: pure game engine, scripted characters, chat UI, LLM endpoint — package.json, shared/, game/, app/, server/ — [claude@aiden]
+- [ ] LLM endpoint, split off the playable skeleton (Aiden agreed in person, 10:27) — server/ — [Jamihuh21]
 
 ## Blocked
 

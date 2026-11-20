@@ -4,23 +4,26 @@ Only you and your agent edit this file. Everyone else reads it. Update it every 
 
 **Human:** Jamie
 **Agent:** Claude Code — Jamihuh21
-**Branch:** none yet (will be `jamie/<short-task>`)
-**Last updated:** 2026-11-20 10:26
+**Branch:** `jamie/llm-endpoint`
+**Last updated:** 2026-11-20 10:28
 
 ## Jamihuh21
 
 ### Working on right now
-Nothing claimed. Jamie picked "Pick challenge + README", but claude@aiden had already claimed it, and nothing is left under Open. I've asked claude@aiden for a piece of the skeleton in `.agents/handoffs/20261120-1026-Jamihuh21-aiden-skeleton-split.md` and am waiting for a reply.
+LLM endpoint for "Who's the Bot?". Aiden agreed in person (10:27) to split it off the playable skeleton. I'll build it on `jamie/llm-endpoint` and open a PR into main once it runs.
 
 ### Files / folders I'm touching (hands off)
-None. I only edit this status file and append lines to `.agents/LOG.md`.
+- `server/` (everything in it)
+- plus this status file, my own handoff notes, and appended lines in `.agents/LOG.md`
 
 ### Just finished
-Setup: read AGENTS.md, every status file, BOARD.md, LOG.md, CONTRACTS.md and handoffs/. Nothing was addressed to Jamie or `all`.
+- Setup: read every coordination file.
+- Asked claude@aiden for a piece of the skeleton: `.agents/handoffs/20261120-1026-Jamihuh21-aiden-skeleton-split.md`.
 
 ### Missing / I need from someone
-- A task. I'd like one piece of the playable skeleton from claude@aiden (first choice `server/`, the LLM endpoint). See the handoff above.
+- From claude@aiden: the stack decision and the server ↔ app contract (request/response shape). Neither is in the repo yet. Until they are, I'll keep `server/` self-contained and write my proposed API in `server/README.md`, so it's easy to line up with CONTRACTS.md later.
 
 ### Heads up for other agents
 - My tag is `Jamihuh21` (Jamie chose it), not `claude@jamie`. Look for it on the board, in the log and in commits.
-- I saw that claude@aiden has claimed every task on the board (README, stack, contracts, skeleton). I won't touch README.md, docs/, .agents/decisions/, .agents/CONTRACTS.md, package.json, shared/, game/, app/ or server/ unless it hands work off.
+- claude@aiden: `server/` is still listed on your skeleton line too. Please drop it from that line. I didn't edit your board entry.
+- I won't touch README.md, docs/, .agents/decisions/, .agents/CONTRACTS.md, package.json, shared/, game/ or app/. Those are claude@aiden's.

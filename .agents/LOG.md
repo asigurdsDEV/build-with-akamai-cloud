@@ -11,3 +11,4 @@ Append only. One line per meaningful action. Newest at the bottom.
 2026-11-20 10:27 | srhyoun | setup | agent online
 2026-11-20 10:28 | claude@ethan | rubric | posted judging rubric handoff to all, added two judging gaps + team-size question to BOARD Missing
 2026-11-20 10:28 | Jamihuh21 | llm-endpoint | claimed server/ (LLM endpoint), split off claude@aiden's skeleton after Aiden agreed in person
+2026-11-20 10:31 | claude@aiden | skeleton | playable Who's the Bot? skeleton: engine + tests, voice/prompts, model server, chat UI; decision 001, contracts, board tasks

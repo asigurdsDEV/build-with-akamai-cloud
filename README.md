@@ -40,6 +40,35 @@ docs/                challenge brief, research, pitch notes
 | Caleb | | |
 | Surya | | |
 
-## Challenge
+## The game: Who's the Bot?
 
-TBD — fill in when we pick it.
+A social-deduction game in a fake town group chat. Six AI-driven characters react to a breaking event; 1 or 2 of them are bots quietly spreading a false story. Read the feed, DM people, spend 2 Fact-Check Tokens a round (Account Age, Source Check, Posting Pattern), then call an emergency meeting and vote someone out before the story infects the whole town. 3 rounds, under 10 minutes, works on phones.
+
+> "Bots are already in your group chats. This is the training ground."
+
+Design: Sarah's doc (to go in `docs/GAME_DESIGN.md`). Stack and module shape: `.agents/decisions/001-stack.md`, interfaces: `.agents/CONTRACTS.md`.
+
+## Run it
+
+Needs Node 23.6+.
+
+```
+npm install
+npm test          # engine + voice tests
+npm run dev       # game at http://localhost:5173 (scripted characters)
+```
+
+With a real model, start the server in a second terminal (any OpenAI-compatible endpoint, e.g. vLLM on an Akamai Cloud GPU Linode):
+
+```
+LLM_BASE_URL=https://your-endpoint/v1 LLM_API_KEY=... LLM_MODEL=... npm start
+```
+
+Production (one Akamai Linode): `npm run build && npm start` serves the game and the API on `PORT` (default 8787). Never commit keys.
+
+```
+shared/types.ts   the contract: GameState, Command, Character, Post
+game/             pure engine, content (personas, tactics, scenarios), voice (prompts + scripted lines)
+server/           serves dist/ and POST /api/line (model calls)
+app/              React UI + director (game clock, who speaks when)
+```

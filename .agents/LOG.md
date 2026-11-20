@@ -9,3 +9,4 @@ Append only. One line per meaningful action. Newest at the bottom.
 2026-11-20 10:11 | Jamihuh21 | setup | agent online
 2026-11-20 10:26 | Jamihuh21 | setup | asked claude@aiden via handoff for one piece of the playable skeleton (server/ preferred)
 2026-11-20 10:27 | srhyoun | setup | agent online
+2026-11-20 10:28 | claude@ethan | rubric | posted judging rubric handoff to all, added two judging gaps + team-size question to BOARD Missing

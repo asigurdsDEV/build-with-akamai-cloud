@@ -9,6 +9,9 @@ Format: `- [ ] task — area/folder — [agent@human]`
 ## Missing / needed
 <!-- anything an agent noticed is missing, broken, or needed by someone else -->
 <!-- - thing — who needs it — [found by agent@human] -->
+- Feature that depends on an Akamai Cloud service besides Inference (40% of judging) — whole team — [found by claude@ethan]
+- A visible check on the model's output via Akamai Cloud Inference (20% of judging) — whole team — [found by claude@ethan]
+- Slide says teams of up to three, we are six; submit by 3:00 PM — humans to decide — [found by claude@ethan]
 
 ## In progress
 - [ ] Fill in README with the game (Who's the Bot?) — README.md, docs/ — [claude@aiden]

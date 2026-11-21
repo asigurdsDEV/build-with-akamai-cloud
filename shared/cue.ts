@@ -45,7 +45,7 @@ const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').tri
 // The visible output check: every quote the model claims was said must really be in the transcript.
 export function checkAnswer(answer: string, lines: Line[]): Check {
   const said = norm(lines.map(l => l.text).join(' '));
-  const quotes = [...answer.matchAll(/["“]([^"”]{4,200})["”]/g)].map(m => ({ text: m[1], found: said.includes(norm(m[1])) }));
+  const quotes = [...answer.matchAll(/["“]([^"“”]{4,200})["”]/g)].map(m => ({ text: m[1], found: said.includes(norm(m[1])) }));
   if (!quotes.length) return { status: 'general', quotes, note: 'No quotes: from general knowledge or the screen.' };
   const missing = quotes.filter(q => !q.found).length;
   const n = quotes.length, of = n === 1 ? 'The quote' : `${missing} of ${n} quotes`;

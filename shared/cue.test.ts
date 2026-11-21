@@ -17,6 +17,10 @@ describe('checkAnswer', () => {
     expect(c.status).toBe('unverified');
     expect(c.quotes[0].found).toBe(false);
   });
+  it('an unclosed curly quote does not swallow the next quote', () => {
+    const c = checkAnswer('“Sounds good, let’s go. “ship the pilot by March.”', lines);
+    expect(c.status).toBe('grounded');
+  });
   it('general when there are no quotes', () => {
     expect(checkAnswer('A pilot usually takes 6 weeks.', lines).status).toBe('general');
   });

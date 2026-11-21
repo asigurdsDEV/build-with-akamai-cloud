@@ -64,7 +64,7 @@ All settings are in `.env.example`. Without `AI_BASE_URL` the captions still wor
 
 ### Mac app (Cue.app)
 
-A menu-bar app with a floating **Liquid Glass** panel (macOS 26+). **⌘\\** shows or hides it from anywhere, **⌘↵** asks "What should I say?", **Esc** hides it. It captions your mic with Apple's on-device speech recognition and screenshots whatever is behind the panel when you ask (it leaves itself out). It starts its own server and, by default, a local model through Ollama.
+A menu-bar app with a floating **Liquid Glass** panel (macOS 26+). **⌘\\** shows or hides it from anywhere, **⌘↵** asks "What should I say?", **Esc** hides it. It captions your mic with Apple's on-device speech recognition and screenshots whatever is behind the panel when you ask (it leaves itself out). It starts its own server and, by default, a local model through Ollama. It opens at login (turn that off with "Open at Login" in the ✨ menu).
 
 ```
 brew install ollama && ollama pull gemma3:4b   # once

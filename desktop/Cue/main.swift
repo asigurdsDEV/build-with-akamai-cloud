@@ -7,6 +7,7 @@ import AVFoundation
 import Carbon.HIToolbox
 import ScreenCaptureKit
 import Speech
+import ServiceManagement
 import WebKit
 
 let info = Bundle.main.infoDictionary ?? [:]
@@ -171,6 +172,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         buildMenuBar()
         captions.send = { [weak self] js in self?.web.evaluateJavaScript(js) }
         HotKey.register { [weak self] in self?.toggle() }
+        if !UserDefaults.standard.bool(forKey: "loginItemOffered") { // on by default once; the menu toggle is the user's choice after that
+            UserDefaults.standard.set(true, forKey: "loginItemOffered")
+            try? SMAppService.mainApp.register()
+        }
         startBackendThenLoad()
         show()
     }
@@ -255,6 +260,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     func hide() { panel.orderOut(nil) }
     @objc func toggle() { panel.isVisible && panel.isKeyWindow ? hide() : show() }
     @objc func reload() { web.reload() }
+    @objc func toggleLogin(_ item: NSMenuItem) {
+        let service = SMAppService.mainApp
+        do { if service.status == .enabled { try service.unregister() } else { try service.register() } } catch { NSLog("Cue: login item: \(error)") }
+        item.state = service.status == .enabled ? .on : .off
+    }
 
     func buildMenuBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -264,6 +274,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         showItem.keyEquivalentModifierMask = .command
         menu.addItem(showItem)
         menu.addItem(NSMenuItem(title: "Reload", action: #selector(reload), keyEquivalent: "r"))
+        let login = NSMenuItem(title: "Open at Login", action: #selector(toggleLogin(_:)), keyEquivalent: "")
+        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        menu.addItem(login)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Cue", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         menu.items.forEach { if $0.action != #selector(NSApplication.terminate(_:)) { $0.target = self } }

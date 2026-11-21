@@ -1,18 +1,27 @@
 # Contracts
 
-The interfaces between parts of the simulator. Agents must not break these without a decision record.
-Fill this in on day 1 once the stack is picked.
+The interfaces between parts of Cue. Agents must not break these without a decision record. Source of truth: `shared/cue.ts` (decision 001).
 
 ## Modules
 
 | Module | Folder | Owner | Talks to |
 |--------|--------|-------|----------|
-| | | | |
+| Shared types, prompts, output check (pure) | `shared/cue.ts` | claude@aiden | used by app and server |
+| Server + API | `server/index.ts` | claude@aiden | Akamai Cloud Inference, Akamai Object Storage |
+| Capture (mic captions, screen, tab audio) | `app/capture.ts` | claude@aiden | browser APIs |
+| UI | `app/App.tsx`, `app/style.css` | claude@aiden | server API |
+
+## API (app → server)
+
+- `GET /api/status` → `{ ai, vision, stt, storage }` (what the server has configured).
+- `POST /api/ask` `{ mode: "say" | "screen" | "summary" | "followups" | "ask", question?, lines: Line[], image?: JPEG data URL }` → the answer as streamed plain text. The app runs `checkAnswer()` when it ends.
+- `POST /api/transcribe` raw `audio/webm` body (≤ 8 MB) → `{ text }`. `503` if no speech model.
+- `POST /api/recap` `{ lines: Line[] }` → `SavedRecap` (`id` is `""` when Object Storage isn't configured).
+- `GET /api/recap/<uuid>` → `SavedRecap`, `404` if missing.
+- Errors: JSON `{ error }` with a status code. `503` = that part isn't configured.
 
 ## Shared data formats
 
-<!-- e.g. API routes, config file schema, event names -->
-
-## Events / messages between modules
-
-<!-- name — payload — who sends — who listens -->
+- `Line { who: "you" | "them", text, at }`, `Check`, `Recap`, `SavedRecap`: see `shared/cue.ts`.
+- Object Storage key: `recaps/<uuid>.json` holding a `SavedRecap`.
+- Env vars: see `.env.example`. Never commit real values.

@@ -38,4 +38,40 @@ docs/                challenge brief, research, pitch notes
 
 ## Challenge
 
-Build with Akamai Cloud. Our app: **Cue**, a live AI copilot for calls and screens, hosted on Akamai Cloud. Judging criteria: `docs/JUDGING.md`.
+Build with Akamai Cloud. Judging criteria: `docs/JUDGING.md`.
+
+## Cue: a live AI copilot for calls
+
+Open Cue in the browser next to your call. It captions the conversation live, sees the screen you share, and answers in a second: what to say next, what's on screen, a summary, follow-up questions, or anything you type. Every answer is checked, so any quote has to match what was really said. When you're done, Cue writes a recap with action items and saves it to Akamai Object Storage with a link you can share.
+
+- **Who it's for:** anyone in calls who needs answers fast (sales, support, interviews as the interviewer, students in lectures), and people who are deaf or hard of hearing, who get live captions of both sides.
+- **Akamai Cloud:** Cloud Inference (answers, recaps, speech-to-text), Object Storage (saved, shareable recaps), Compute (hosting). Details: `.agents/decisions/001-cue.md`.
+- **Output check:** `checkAnswer()` in `shared/cue.ts`. ✓ all quotes match the transcript, ⚠ a quote was never said, ○ no quotes (general knowledge).
+- **Keyboard:** `Ctrl`/`⌘` + `Enter` = "What should I say?". **Pop out** keeps answers on top of other windows (Chrome/Edge).
+
+### Run it
+
+Needs Node 23.6+ and Chrome or Edge.
+
+```
+npm install
+npm test
+npm run build
+AI_BASE_URL=... AI_API_KEY=... AI_MODEL=... npm start   # http://localhost:8787
+```
+
+All settings are in `.env.example`. Without `AI_BASE_URL` the captions still work but nothing answers; without the `S3_*` settings recaps aren't saved. For UI work, run `npm run dev` (port 5173) next to `npm start`.
+
+### Deploy on Akamai Cloud
+
+1. Create an Object Storage bucket (private) and an access key.
+2. Create a Linode, install Node 23.6+, clone the repo, `npm ci && npm run build`.
+3. Set the env vars from `.env.example` and run `npm start` (e.g. as a systemd service).
+4. Put HTTPS in front (e.g. Caddy: `your-domain { reverse_proxy localhost:8787 }`). The mic and screen share only work over HTTPS.
+
+```
+shared/cue.ts     types, prompts, the output check (pure, tested)
+server/index.ts   API + static files; Akamai Cloud Inference and Object Storage
+app/capture.ts    mic captions, screen share, screen frames, tab-audio chunks
+app/App.tsx       the UI: session, answers, pop-out, recap page
+```

@@ -14,3 +14,4 @@ Append only. One line per meaningful action. Newest at the bottom.
 2026-11-20 10:31 | claude@aiden | skeleton | playable Who's the Bot? skeleton: engine + tests, voice/prompts, model server, chat UI; decision 001, contracts, board tasks
 2026-11-20 10:32 | claude@aiden | skeleton | split server/ off to Jamihuh21 (draft in 12d54d2), contract for POST /api/line in CONTRACTS.md, Akamai services in decision 001, board tasks for the two judging gaps
 2026-11-20 16:10 | claude@aiden | pivot | repo is now Aiden + Caleb only, building Cue (live AI copilot); Who's the Bot? kept on branch aiden/game-skeleton for the team of four; claimed Cue v1
+2026-11-20 16:14 | claude@aiden | cue | Cue v1: captions, screen context, streamed answers, quote check, pop-out, recaps in Object Storage; decision 001, contracts, board tasks

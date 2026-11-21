@@ -38,4 +38,53 @@ docs/                challenge brief, research, pitch notes
 
 ## Challenge
 
-Build with Akamai Cloud. Our app: **Cue**, a live AI copilot for calls and screens, hosted on Akamai Cloud. Judging criteria: `docs/JUDGING.md`.
+Build with Akamai Cloud. Judging criteria: `docs/JUDGING.md`.
+
+## Cue: a live AI copilot for calls
+
+Open Cue in the browser next to your call. It captions the conversation live, sees the screen you share, and answers in a second: what to say next, what's on screen, a summary, follow-up questions, or anything you type. Every answer is checked, so any quote has to match what was really said. When you're done, Cue writes a recap with action items and saves it to Akamai Object Storage with a link you can share.
+
+- **Who it's for:** anyone in calls who needs answers fast (sales, support, interviews as the interviewer, students in lectures), and people who are deaf or hard of hearing, who get live captions of both sides.
+- **Akamai Cloud:** Cloud Inference (answers, recaps, speech-to-text), Object Storage (saved, shareable recaps), Compute (hosting). Details: `.agents/decisions/001-cue.md`.
+- **Output check:** `checkAnswer()` in `shared/cue.ts`. ✓ all quotes match the transcript, ⚠ a quote was never said, ○ no quotes (general knowledge).
+- **Keyboard:** `Ctrl`/`⌘` + `Enter` = "What should I say?". **Pop out** keeps answers on top of other windows (Chrome/Edge).
+
+### Run it
+
+Needs Node 23.6+ and Chrome or Edge.
+
+```
+npm install
+npm test
+npm run build
+AI_BASE_URL=... AI_API_KEY=... AI_MODEL=... npm start   # http://localhost:8787
+```
+
+All settings are in `.env.example`. Without `AI_BASE_URL` the captions still work but nothing answers; without the `S3_*` settings recaps aren't saved. For UI work, run `npm run dev` (port 5173) next to `npm start`.
+
+### Mac app (Cue.app)
+
+A menu-bar app with a floating **Liquid Glass** panel (macOS 26+). **⌘\\** shows or hides it from anywhere, **⌘↵** asks "What should I say?", **Esc** hides it. **Listen** captions both sides at once: **Them** is everything your Mac plays (the other people on a Zoom, Meet, Teams or FaceTime call, through ScreenCaptureKit) and **Me** is your mic; mute either one. Captions use Apple's on-device SpeechAnalyzer, so words appear while people talk and each sentence lands right as it ends. **Auto-suggest replies** (on by default, in Settings): when they finish a question, or a longer turn followed by a pause, Cue writes a reply to exactly that without you clicking. Use headphones if Me is on, so your mic doesn't pick up their voice from the speakers. It screenshots whatever is behind the panel when you ask (it leaves itself out). It starts its own server and, by default, a local model through Ollama. Settings → Model picks **Smart (gemma3:12b)**, the default, or **Fast (gemma3:4b)**: about 3× quicker but less careful. A new question always cancels a reply that's still being written (the server stops the model too), and replies answer what they said since the last reply. The model is loaded only while the panel is open or Cue is listening; 90 s after you hide it, it's unloaded (frees ~3.5 GB). Quitting Cue stops Ollama, and the next launch cleans up anything a crash left behind. It opens at login (turn that off with "Open at Login" in the ✨ menu).
+
+```
+brew install ollama && ollama pull gemma3:12b && ollama pull gemma3:4b   # once (Smart 8 GB, Fast 3.4 GB)
+./desktop/build.sh                              # builds ~/Applications/Cue.app and opens it
+```
+
+The **gear** opens Settings: *About you* (context Cue uses in every answer, stored on this Mac), answer length (short / detailed), glass style (frosted / clear), Hide from Screen Sharing, Open at Login, and Clear session. **Hide from Screen Sharing** (also in the ✨ menu, off by default) asks screen sharing and recording apps to leave the panel out; each capture app decides whether it honors that. The first time, macOS asks for Microphone, Speech Recognition and Screen Recording. To use Akamai Cloud Inference or Object Storage instead, put the `.env.example` settings in `~/Library/Application Support/Cue/cue.env`. Logs: `~/Library/Logs/Cue.log`. To preview the panel layout in a browser, open `http://localhost:8787/?overlay`.
+
+### Deploy on Akamai Cloud
+
+1. Create an Object Storage bucket (private) and an access key.
+2. Create a Linode, install Node 23.6+, clone the repo, `npm ci && npm run build`.
+3. Set the env vars from `.env.example` and run `npm start` (e.g. as a systemd service).
+4. Put HTTPS in front (e.g. Caddy: `your-domain { reverse_proxy localhost:8787 }`). The mic and screen share only work over HTTPS.
+
+```
+shared/cue.ts     types, prompts, the output check (pure, tested)
+server/index.ts   API + static files; Akamai Cloud Inference and Object Storage
+app/capture.ts    mic captions, screen share, screen frames, tab-audio chunks
+app/App.tsx       the UI: session, answers, pop-out, recap page
+app/Overlay.tsx   the compact glass layout used inside Cue.app
+desktop/          Cue.app: native Swift shell (Liquid Glass panel, ⌘\\ hotkey, captions, screen capture)
+```

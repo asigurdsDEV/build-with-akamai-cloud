@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Cue</string>
+  <key>CFBundleDisplayName</key><string>Cue</string>
+  <key>CFBundleIdentifier</key><string>dev.asigurds.cue</string>
+  <key>CFBundleExecutable</key><string>Cue</string>
+  <key>CFBundleIconFile</key><string>Cue</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>26.0</string>
+  <key>LSUIElement</key><true/>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>Cue captions what you say during a call.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>Cue turns your speech into live captions, on your Mac when possible.</string>
+  <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
+  <key>CueNode</key><string>__NODE__</string>
+  <key>CueOllama</key><string>__OLLAMA__</string>
+</dict>
+</plist>

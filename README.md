@@ -62,6 +62,17 @@ AI_BASE_URL=... AI_API_KEY=... AI_MODEL=... npm start   # http://localhost:8787
 
 All settings are in `.env.example`. Without `AI_BASE_URL` the captions still work but nothing answers; without the `S3_*` settings recaps aren't saved. For UI work, run `npm run dev` (port 5173) next to `npm start`.
 
+### Mac app (Cue.app)
+
+A menu-bar app with a floating **Liquid Glass** panel (macOS 26+). **⌘\\** shows or hides it from anywhere, **⌘↵** asks "What should I say?", **Esc** hides it. It captions your mic with Apple's on-device speech recognition and screenshots whatever is behind the panel when you ask (it leaves itself out). It starts its own server and, by default, a local model through Ollama.
+
+```
+brew install ollama && ollama pull gemma3:4b   # once
+./desktop/build.sh                              # builds ~/Applications/Cue.app and opens it
+```
+
+The first time, macOS asks for Microphone, Speech Recognition and Screen Recording. To use Akamai Cloud Inference or Object Storage instead, put the `.env.example` settings in `~/Library/Application Support/Cue/cue.env`. Logs: `~/Library/Logs/Cue.log`. To preview the panel layout in a browser, open `http://localhost:8787/?overlay`.
+
 ### Deploy on Akamai Cloud
 
 1. Create an Object Storage bucket (private) and an access key.
@@ -74,4 +85,6 @@ shared/cue.ts     types, prompts, the output check (pure, tested)
 server/index.ts   API + static files; Akamai Cloud Inference and Object Storage
 app/capture.ts    mic captions, screen share, screen frames, tab-audio chunks
 app/App.tsx       the UI: session, answers, pop-out, recap page
+app/Overlay.tsx   the compact glass layout used inside Cue.app
+desktop/          Cue.app: native Swift shell (Liquid Glass panel, ⌘\\ hotkey, captions, screen capture)
 ```

@@ -10,6 +10,7 @@ The interfaces between parts of Cue. Agents must not break these without a decis
 | Server + API | `server/index.ts` | claude@aiden | Akamai Cloud Inference, Akamai Object Storage |
 | Capture (mic captions, screen, tab audio) | `app/capture.ts` | claude@aiden | browser APIs |
 | UI | `app/App.tsx`, `app/style.css` | claude@aiden | server API |
+| Mac app shell | `desktop/` | claude@aiden | loads the UI in a WKWebView; bridge below |
 
 ## API (app → server)
 
@@ -25,3 +26,9 @@ The interfaces between parts of Cue. Agents must not break these without a decis
 - `Line { who: "you" | "them", text, at }`, `Check`, `Recap`, `SavedRecap`: see `shared/cue.ts`.
 - Object Storage key: `recaps/<uuid>.json` holding a `SavedRecap`.
 - Env vars: see `.env.example`. Never commit real values.
+
+## Cue.app bridge (page ↔ native)
+
+- Page → native: `webkit.messageHandlers.cue.postMessage({ type })` with `hide`, `listen` (`on: boolean`), `frame` (`id: number`).
+- Native → page: `window.__cue.caption(final, interim)`, `window.__cue.frame(id, jpegDataUrl | "")`, `window.__cue.error(message)`, `window.__cueFocus()`.
+- The app bundles `dist/`, `server/`, `shared/` and `aws4fetch` in `Contents/Resources/web` and runs the server from there. Settings: `~/Library/Application Support/Cue/cue.env`.

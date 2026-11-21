@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { MODES, checkAnswer, type Check, type Line, type Mode, type SavedRecap } from '../shared/cue.ts';
-import { canCaptionMic, captionMic, grabFrame, recordTabAudio, shareScreen } from './capture.ts';
+import { canCaptionMic, captionMic, grabFrame, native, nativeCaptions, nativeFrame, onNativeError, recordTabAudio, shareScreen } from './capture.ts';
+import { Overlay } from './Overlay.tsx';
 
-interface Status { ai: boolean; vision: boolean; stt: boolean; storage: boolean }
-interface Answer { id: number; label: string; text: string; done: boolean; check?: Check; error?: string }
+export interface Status { ai: boolean; vision: boolean; stt: boolean; storage: boolean }
+export interface Answer { id: number; label: string; text: string; done: boolean; check?: Check; error?: string }
 type PipWindow = Window & typeof globalThis;
 const pipApi = (window as unknown as { documentPictureInPicture?: { requestWindow(o: { width: number; height: number }): Promise<PipWindow> } }).documentPictureInPicture;
 
@@ -30,10 +31,13 @@ function Session() {
   useEffect(() => { fetch('/api/status').then(r => r.json()).then(setStatus).catch(() => setStatus({ ai: false, vision: false, stt: false, storage: false })); }, []);
   const addLine = (who: Line['who'], text: string) => text && setLines(ls => [...ls, { who, text, at: Math.round(performance.now() - t0.current) }]);
   const note = (msg: string) => setNotes(n => n.includes(msg) ? n : [...n, msg]);
+  useEffect(() => { if (native) onNativeError(note); }, []);
 
   async function start() {
     setLines([]); setAnswers([]); setRecap(null); setNotes([]); t0.current = performance.now(); setLive(true);
-    stops.current.push(captionMic((final, partial) => { addLine('you', final); setInterim(partial); }, note));
+    const onText = (final: string, partial: string) => { addLine('you', final); setInterim(partial); };
+    if (native) { stops.current.push(nativeCaptions(onText, note)); return; } // Cue.app: native captions; the screen is captured when you ask
+    stops.current.push(captionMic(onText, note));
     try {
       const s = await shareScreen();
       setScreen(s);
@@ -59,7 +63,7 @@ function Session() {
     const update = (patch: Partial<Answer>) => setAnswers(a => a.map(x => x.id === id ? { ...x, ...patch } : x));
     setAnswers(a => [{ id, label, text: '', done: false }, ...a]);
     try {
-      const image = screen && status?.vision ? await grabFrame(screen) : undefined;
+      const image = !status?.vision ? undefined : native ? await nativeFrame() : screen ? await grabFrame(screen) : undefined;
       const res = await fetch('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode, question, lines: linesRef.current, image }) });
       if (!res.ok || !res.body) throw new Error((await res.json().catch(() => null))?.error ?? `error ${res.status}`);
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -95,6 +99,7 @@ function Session() {
     return () => targets.forEach(t => t.removeEventListener('keydown', onKey));
   });
 
+  if (native) return <Overlay {...{ status, live, lines, interim, answers, recap, notes, start, stop, ask, endAndRecap }} />;
   const panel = <AskPanel answers={answers} disabled={!status?.ai} onAsk={ask} />;
 
   return (
@@ -178,7 +183,7 @@ function AskPanel({ answers, disabled, onAsk }: { answers: Answer[]; disabled: b
   );
 }
 
-function CheckBadge({ check }: { check: Check }) {
+export function CheckBadge({ check }: { check: Check }) {
   const icon = { grounded: '✓', unverified: '⚠', general: '○' }[check.status];
   return (
     <details className={`check ${check.status}`}>
@@ -188,7 +193,7 @@ function CheckBadge({ check }: { check: Check }) {
   );
 }
 
-function RecapView({ saved, storage }: { saved: SavedRecap; storage: boolean }) {
+export function RecapView({ saved, storage }: { saved: SavedRecap; storage: boolean }) {
   const link = saved.id ? `${location.origin}/r/${saved.id}` : '';
   const [copied, setCopied] = useState(false);
   return (

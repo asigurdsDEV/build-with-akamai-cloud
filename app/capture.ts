@@ -58,3 +58,33 @@ export function recordTabAudio(stream: MediaStream, onChunk: (blob: Blob) => voi
   cycle();
   return () => { stopped = true; if (rec?.state === 'recording') rec.stop(); };
 }
+
+// Inside Cue.app (desktop/), the native shell does captions and screen capture. It calls window.__cue.*.
+type NativeHandler = { postMessage(msg: unknown): void };
+const nativeHandler = (window as unknown as { webkit?: { messageHandlers?: { cue?: NativeHandler } } }).webkit?.messageHandlers?.cue;
+export const native = !!nativeHandler || new URLSearchParams(location.search).has('overlay'); // ?overlay previews the Cue.app layout in a browser
+const hooks: { caption?: (final: string, interim: string) => void; error?: (msg: string) => void; frames: Map<number, (url?: string) => void> } = { frames: new Map() };
+(window as unknown as { __cue: unknown }).__cue = {
+  caption: (final: string, interim: string) => hooks.caption?.(final, interim),
+  error: (msg: string) => hooks.error?.(msg),
+  frame: (id: number, url?: string) => { hooks.frames.get(id)?.(url || undefined); hooks.frames.delete(id); },
+};
+export const onNativeError = (fn: (msg: string) => void) => { hooks.error = fn; };
+export const nativeSend = (msg: { type: string; [k: string]: unknown }) => nativeHandler?.postMessage(msg);
+
+export function nativeCaptions(onText: (final: string, interim: string) => void, onError: (msg: string) => void) {
+  hooks.caption = onText; hooks.error = onError;
+  nativeSend({ type: 'listen', on: true });
+  return () => { nativeSend({ type: 'listen', on: false }); hooks.caption = undefined; };
+}
+
+// A screenshot of what's behind the Cue panel (the panel itself is left out).
+let frameSeq = 0;
+export function nativeFrame(): Promise<string | undefined> {
+  const id = ++frameSeq;
+  return new Promise(resolve => {
+    hooks.frames.set(id, resolve);
+    nativeSend({ type: 'frame', id });
+    setTimeout(() => { if (hooks.frames.delete(id)) resolve(undefined); }, 4000);
+  });
+}

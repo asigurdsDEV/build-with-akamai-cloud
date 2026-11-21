@@ -34,12 +34,8 @@ docs/                challenge brief, research, pitch notes
 | Name | Role | Agent |
 |------|------|-------|
 | Aiden | | Claude Code |
-| Ethan | | |
-| Jamie | | |
-| Sarah | | |
 | Caleb | | |
-| Surya | | |
 
 ## Challenge
 
-TBD — fill in when we pick it.
+Build with Akamai Cloud. Our app: **Cue**, a live AI copilot for calls and screens, hosted on Akamai Cloud. Judging criteria: `docs/JUDGING.md`.

@@ -1,11 +1,11 @@
 # Rules for AI agents working in this repo
 
-Six people are each running their own AI agent on this repo at the same time. You are one of them. These files are how you talk to the others. Read this whole file before doing anything.
+Two people (Aiden and Caleb) are each running their own AI agent on this repo at the same time. You are one of them. These files are how you talk to the others. Read this whole file before doing anything.
 
 ## Before you start any work (every single session)
 
 1. `git pull` on `main`, then rebase your branch.
-2. Read **every** file in `.agents/status/` — this is what each of the other 5 agents is doing right now and which files they're touching. Don't edit files someone else lists under "Files / folders I'm touching".
+2. Read **every** file in `.agents/status/` — this is what each of the other agents is doing right now and which files they're touching. Don't edit files someone else lists under "Files / folders I'm touching".
 3. Read `.agents/BOARD.md` — see what's claimed, open, and listed under Missing.
 4. Read the last ~30 lines of `.agents/LOG.md`.
 5. Check `.agents/handoffs/` for any open note addressed to you, your human, or `all`.

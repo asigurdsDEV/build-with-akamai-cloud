@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { MODES, checkAnswer, type Check, type Line, type Mode, type SavedRecap } from '../shared/cue.ts';
+import { MODES, checkAnswer, isQuestion, lastTheirTurn, type Check, type Line, type Mode, type SavedRecap } from '../shared/cue.ts';
 import { canCaptionMic, captionMic, grabFrame, native, nativeCaptions, nativeFrame, onNativeEvents, recordTabAudio, shareScreen } from './capture.ts';
 import { Overlay } from './Overlay.tsx';
 
-export interface Prefs { profile: string; length: 'short' | 'detailed' }
-const loadPrefs = (): Prefs => { try { return { profile: '', length: 'short', ...JSON.parse(localStorage.getItem('cue.prefs') ?? '{}') }; } catch { return { profile: '', length: 'short' }; } };
+export interface Prefs { profile: string; length: 'short' | 'detailed'; auto: boolean }
+const DEFAULT_PREFS: Prefs = { profile: '', length: 'short', auto: true };
+const loadPrefs = (): Prefs => { try { return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem('cue.prefs') ?? '{}') }; } catch { return DEFAULT_PREFS; } };
 export interface Status { model?: string; ai: boolean; vision: boolean; stt: boolean; storage: boolean }
-export interface Answer { id: number; label: string; text: string; done: boolean; check?: Check; error?: string }
+export interface Answer { id: number; label: string; text: string; done: boolean; auto?: boolean; check?: Check; error?: string }
 type PipWindow = Window & typeof globalThis;
 const pipApi = (window as unknown as { documentPictureInPicture?: { requestWindow(o: { width: number; height: number }): Promise<PipWindow> } }).documentPictureInPicture;
 
@@ -32,6 +33,10 @@ function Session() {
   const prefsRef = useRef(prefs); prefsRef.current = prefs;
   const setPrefs = (p: Partial<Prefs>) => setPrefsState(old => { const next = { ...old, ...p }; try { localStorage.setItem('cue.prefs', JSON.stringify(next)); } catch { /* private mode: keep in memory */ } return next; });
   const linesRef = useRef(lines); linesRef.current = lines;
+  const interimRef = useRef(interim); interimRef.current = interim;
+  const autoTimer = useRef(0);
+  const answeredUpTo = useRef(0); // lines.length when Cue last auto-answered
+  const autoAbort = useRef<AbortController | null>(null);
   const stops = useRef<(() => void)[]>([]);
   const t0 = useRef(0);
 
@@ -42,15 +47,35 @@ function Session() {
   useEffect(() => { if (native) onNativeEvents(note, sourceOff); }, []);
   useEffect(() => { if (native) setLive(sources.you || sources.them); }, [sources]);
 
-  // Cue.app: turn captions of your mic ("you") or of the call audio ("them") on or off, independently.
-  function toggleSource(who: Line['who']) {
-    if (sources[who]) { sourceStops.current[who]?.(); sourceOff(who); return; }
-    if (!sources.you && !sources.them && recap) { setLines([]); setAnswers([]); setRecap(null); } // a new session after a recap
+  // Cue.app: captions of your mic ("you") and of the call audio ("them"). Listen turns on both; each can be muted.
+  function sourceOn(who: Line['who']) {
+    if (sourceStops.current[who]) return;
     if (!t0.current) t0.current = performance.now();
-    setNotes([]);
     sourceStops.current[who] = nativeCaptions(who, (final, partial) => { addLine(who, final); setInterim(i => ({ ...i, [who]: partial })); });
     setSources(s => ({ ...s, [who]: true }));
   }
+  function toggleSource(who: Line['who']) { if (sources[who]) { sourceStops.current[who]?.(); sourceOff(who); } else sourceOn(who); }
+  function toggleListen() {
+    if (sources.you || sources.them) return stop();
+    if (recap) { setLines([]); setAnswers([]); setRecap(null); } // a new session after a recap
+    setNotes([]);
+    sourceOn('them'); sourceOn('you');
+  }
+
+  // Auto-answer: when they finish a question (or a longer turn) and nobody starts talking, suggest a reply.
+  useEffect(() => {
+    window.clearTimeout(autoTimer.current);
+    const last = lines.at(-1);
+    if (!prefs.auto || !status?.ai || last?.who !== 'them' || lines.length <= answeredUpTo.current) return;
+    const asked = isQuestion(last.text);
+    if (!asked && lastTheirTurn(lines).split(/\s+/).length < 12) return;
+    autoTimer.current = window.setTimeout(() => {
+      if (interimRef.current.them || interimRef.current.you) return; // someone is mid-sentence; their next line re-arms this
+      answeredUpTo.current = linesRef.current.length;
+      ask('say', undefined, true);
+    }, asked ? 700 : 2200);
+  }, [lines, prefs.auto, status?.ai]);
+  useEffect(() => { if (interim.them || interim.you) window.clearTimeout(autoTimer.current); }, [interim]);
 
   async function start() {
     setLines([]); setAnswers([]); setRecap(null); setNotes([]); t0.current = performance.now(); setLive(true);
@@ -75,20 +100,26 @@ function Session() {
 
   function stop() { stops.current.forEach(f => f()); stops.current = []; (['you', 'them'] as const).forEach(w => { sourceStops.current[w]?.(); sourceOff(w); }); setLive(false); setScreen(null); setInterim({ you: '', them: '' }); }
 
-  async function ask(mode: Mode, question?: string) {
+  async function ask(mode: Mode, question?: string, auto = false) {
     const id = Date.now();
-    const label = mode === 'ask' ? question! : MODES[mode].label;
+    const theirs = lastTheirTurn(linesRef.current);
+    const label = mode === 'ask' ? question! : auto ? `Reply to: ${theirs.length > 70 ? '…' + theirs.slice(-70) : theirs}` : MODES[mode].label;
     const update = (patch: Partial<Answer>) => setAnswers(a => a.map(x => x.id === id ? { ...x, ...patch } : x));
-    setAnswers(a => [{ id, label, text: '', done: false }, ...a]);
+    const abort = new AbortController();
+    if (auto) { autoAbort.current?.abort(); autoAbort.current = abort; } // a newer turn replaces an unfinished auto reply
+    setAnswers(a => [{ id, label, text: '', done: false, auto }, ...a]);
     try {
       const image = !status?.vision ? undefined : native ? await nativeFrame() : screen ? await grabFrame(screen) : undefined;
-      const res = await fetch('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode, question, lines: linesRef.current, image, ...prefsRef.current }) });
+      const res = await fetch('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode, question, lines: linesRef.current, image, ...prefsRef.current }), signal: abort.signal });
       if (!res.ok || !res.body) throw new Error((await res.json().catch(() => null))?.error ?? `error ${res.status}`);
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
       let text = '';
       for (let r = await reader.read(); !r.done; r = await reader.read()) update({ text: (text += r.value) });
       update({ done: true, check: checkAnswer(text, linesRef.current) });
-    } catch (e) { update({ done: true, error: (e as Error).message }); }
+    } catch (e) {
+      if (abort.signal.aborted) setAnswers(a => a.filter(x => x.id !== id)); // replaced by a newer auto reply
+      else update({ done: true, error: (e as Error).message });
+    }
   }
 
   async function endAndRecap() {
@@ -117,8 +148,8 @@ function Session() {
     return () => targets.forEach(t => t.removeEventListener('keydown', onKey));
   });
 
-  const clearSession = () => { stop(); setLines([]); setAnswers([]); setRecap(null); setNotes([]); t0.current = 0; };
-  if (native) return <Overlay {...{ status, sources, lines, interim, answers, recap, notes, toggleSource, ask, endAndRecap, prefs, setPrefs, clearSession }} />;
+  const clearSession = () => { stop(); setLines([]); setAnswers([]); setRecap(null); setNotes([]); t0.current = 0; answeredUpTo.current = 0; };
+  if (native) return <Overlay {...{ status, sources, lines, interim, answers, recap, notes, toggleSource, toggleListen, ask, endAndRecap, prefs, setPrefs, clearSession }} />;
   const panel = <AskPanel answers={answers} disabled={!status?.ai} onAsk={ask} />;
 
   return (

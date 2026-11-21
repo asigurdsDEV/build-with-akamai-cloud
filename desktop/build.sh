@@ -7,7 +7,7 @@ APP="$HOME/Applications/Cue.app"
 mkdir -p "$OUT" "$HOME/Applications"
 
 npm run build
-swiftc -O -swift-version 5 -target arm64-apple-macos26.0 desktop/Cue/main.swift -o "$OUT/Cue"
+swiftc -O -swift-version 5 -target arm64-apple-macos26.0 desktop/Cue/*.swift -o "$OUT/Cue"
 
 if [[ ! -f "$OUT/Cue.icns" ]]; then
   swift desktop/make-icon.swift "$OUT/icon.png"

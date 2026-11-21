@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { askMessages, checkAnswer, parseRecap, recapChecks, transcriptText, type Line } from './cue.ts';
+import { askMessages, checkAnswer, isQuestion, lastTheirTurn, parseRecap, recapChecks, transcriptText, turns, type Line } from './cue.ts';
 
 const lines: Line[] = [
   { who: 'them', text: 'Our budget is about forty thousand for Q1.', at: 0 },
@@ -48,6 +48,26 @@ describe('prompts', () => {
   it('caps a custom question', () => {
     const m = askMessages({ mode: 'ask', question: 'x'.repeat(2000), lines }, false);
     expect((m[1].content as string).length).toBeLessThan(1000);
+  });
+});
+
+describe('turns and auto-answer', () => {
+  const call: Line[] = [
+    { who: 'you', text: 'Thanks for joining.', at: 0 },
+    { who: 'them', text: 'Sure.', at: 1 }, { who: 'them', text: 'Our main concern is the price.', at: 2 }, { who: 'them', text: 'Can you do anything on that?', at: 3 },
+  ];
+  it('joins consecutive lines into turns', () => {
+    expect(turns(call).map(t => t.who)).toEqual(['you', 'them']);
+    expect(lastTheirTurn(call)).toBe('Sure. Our main concern is the price. Can you do anything on that?');
+    expect(lastTheirTurn([...call, { who: 'you', text: 'Yes.', at: 4 }])).toBe('');
+  });
+  it('spots questions, including ones the recognizer left without a question mark', () => {
+    expect(isQuestion('Can you do anything on that?')).toBe(true);
+    expect(isQuestion('Our budget is tight. When could you start')).toBe(true);
+    expect(isQuestion('Our main concern is the price.')).toBe(false);
+  });
+  it('aims "What should I say?" at their latest turn', () => {
+    expect(askMessages({ mode: 'say', lines: call }, false)[1].content).toContain('They just said: Sure. Our main concern is the price. Can you do anything on that?');
   });
 });
 

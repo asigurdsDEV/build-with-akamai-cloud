@@ -7,11 +7,11 @@ import { nativeSend, onNativeSettings, type NativeSettings } from './capture.ts'
 interface Props {
   status: Status | null; sources: { you: boolean; them: boolean }; lines: Line[]; interim: { you: string; them: string }; answers: Answer[];
   recap: SavedRecap | 'loading' | null; notes: string[];
-  toggleSource(who: Line['who']): void; ask(mode: Mode, q?: string): void; endAndRecap(): void;
+  toggleSource(who: Line['who']): void; toggleListen(): void; ask(mode: Mode, q?: string): void; endAndRecap(): void;
   prefs: Prefs; setPrefs(p: Partial<Prefs>): void; clearSession(): void;
 }
 
-export function Overlay({ status, sources, lines, interim, answers, recap, notes, toggleSource, ask, endAndRecap, prefs, setPrefs, clearSession }: Props) {
+export function Overlay({ status, sources, lines, interim, answers, recap, notes, toggleSource, toggleListen, ask, endAndRecap, prefs, setPrefs, clearSession }: Props) {
   const [q, setQ] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef(settingsOpen); settingsRef.current = settingsOpen;
@@ -34,8 +34,7 @@ export function Overlay({ status, sources, lines, interim, answers, recap, notes
       <header className="ov-top">
         <span className="ov-logo"><Icon d={SPARK} /> Cue</span>
         <div className="ov-actions">
-          <button className={`ov-pill ${sources.you ? 'on' : ''}`} onClick={() => toggleSource('you')} aria-pressed={sources.you} title={sources.you ? 'Stop captioning your mic' : 'Caption your mic'}><Icon d={sources.you ? MIC : MIC_OFF} />Me</button>
-          <button className={`ov-pill ${sources.them ? 'on' : ''}`} onClick={() => toggleSource('them')} aria-pressed={sources.them} title={sources.them ? 'Stop captioning the call' : 'Caption the other people on the call'}><Icon d={sources.them ? SPEAKER : SPEAKER_OFF} />Them</button>
+          <button className={`ov-pill ov-listen ${live ? 'on' : ''}`} onClick={toggleListen} aria-pressed={live} title={live ? 'Stop listening' : 'Caption you and the call'}><Icon d={WAVE} />{live ? 'Listening' : 'Listen'}</button>
           <button className="ov-icon" onClick={endAndRecap} disabled={!lines.length || recap === 'loading' || !ai} aria-label="End and recap" title="End & recap"><Icon d={DOC} /></button>
           <button className={`ov-icon ${settingsOpen ? 'active' : ''}`} onClick={() => setSettingsOpen(o => !o)} aria-label="Settings" aria-pressed={settingsOpen} title="Settings"><Icon d={GEAR} /></button>
           <button className="ov-icon" onClick={() => nativeSend({ type: 'hide' })} aria-label="Hide Cue" title="Hide (Esc)"><Icon d={CLOSE} /></button>
@@ -58,7 +57,7 @@ export function Overlay({ status, sources, lines, interim, answers, recap, notes
         {recap === 'loading' && <p className="ov-empty">Writing your recap…</p>}
         {recap && recap !== 'loading' ? <RecapView saved={recap} storage={!!status?.storage} />
           : answers.length ? answers.map((a, i) => (
-            <article key={a.id} className={`ov-answer ${i === 0 ? 'latest' : ''}`}>
+            <article key={a.id} className={`ov-answer ${i === 0 ? 'latest' : ''} ${a.auto ? 'auto' : ''}`}>
               <h3>{a.label}</h3>
               {a.error ? <p className="error">{a.error}</p> : <p className="text">{a.text || <span className="ov-thinking">Thinking</span>}{!a.done && a.text && <span className="cursor" />}</p>}
               {a.check && <CheckBadge check={a.check} />}
@@ -72,12 +71,19 @@ export function Overlay({ status, sources, lines, interim, answers, recap, notes
           )}
       </main>
 
+      {live && (
+        <div className="ov-sources" aria-label="Caption sources">
+          <button className={sources.them ? 'on' : ''} onClick={() => toggleSource('them')} aria-pressed={sources.them} title="The other people on the call (your Mac's audio)"><Icon d={sources.them ? SPEAKER : SPEAKER_OFF} />Them</button>
+          <button className={sources.you ? 'on' : ''} onClick={() => toggleSource('you')} aria-pressed={sources.you} title="Your mic. Turn off to only follow what they say."><Icon d={sources.you ? MIC : MIC_OFF} />Me</button>
+          {prefs.auto && <span className="ov-auto">Auto-reply on</span>}
+        </div>
+      )}
       <footer className="ov-captions" aria-live="polite">
         {recent.length || interim.you || interim.them
           ? <>{recent.map((l, i) => <p key={i} className={l.who}><b>{l.who === 'you' ? 'You' : 'Them'}</b>{l.text}</p>)}
               {interim.them && <p className="them interim"><b>Them</b>{interim.them}</p>}
               {interim.you && <p className="you interim"><b>You</b>{interim.you}</p>}</>
-          : <p className="muted">{live ? 'Listening…' : 'Turn on Them to caption the call, and Me for your mic.'}</p>}
+          : <p className="muted">{live ? 'Listening…' : 'Tap Listen to caption you and the call.'}</p>}
       </footer>
       </>}
     </div>
@@ -99,6 +105,9 @@ function Settings({ status, prefs, setPrefs, clearSession }: { status: Status | 
       <section>
         <h2>Answers</h2>
         <Segmented label="Answer length" value={prefs.length} options={[['short', 'Short'], ['detailed', 'Detailed']]} onChange={v => setPrefs({ length: v as Prefs['length'] })} />
+      </section>
+      <section>
+        <Toggle label="Auto-suggest replies" hint="When they ask a question or finish talking, Cue writes a reply without you clicking." on={prefs.auto} onChange={v => setPrefs({ auto: v })} />
       </section>
       <section>
         <h2>Look</h2>
@@ -139,6 +148,7 @@ function Toggle({ label, hint, on, onChange, disabled }: { label: string; hint?:
 
 const Icon = ({ d }: { d: string }) => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>;
 const MIC = 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3';
+const WAVE = 'M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2';
 const MIC_OFF = 'M3 3l18 18M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V6a3 3 0 0 0-5.7-1.3M5 11a7 7 0 0 0 11.9 5M19 11a7 7 0 0 1-.4 2.3M12 18v3';
 const SPEAKER = 'M11 5L6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13';
 const SPEAKER_OFF = 'M11 5L6 9H3v6h3l5 4zM22 9l-6 6M16 9l6 6';

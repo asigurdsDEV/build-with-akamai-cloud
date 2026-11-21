@@ -15,12 +15,32 @@ export const MODES: Record<Exclude<Mode, 'ask'>, { label: string; prompt: string
   followups: { label: 'Follow-up questions', prompt: 'Give me 3 sharp follow-up questions I could ask next.' },
 };
 
+// Consecutive lines from the same speaker joined into one turn, so the model reads whole thoughts, not fragments.
+export function turns(lines: Line[]): Line[] {
+  const out: Line[] = [];
+  for (const l of lines) {
+    const last = out.at(-1);
+    if (last && last.who === l.who) last.text += ' ' + l.text; else out.push({ ...l });
+  }
+  return out;
+}
+
 export const transcriptText = (lines: Line[], max = 6000) =>
-  lines.map(l => `${l.who === 'you' ? 'Me' : 'Them'}: ${l.text}`).join('\n').slice(-max); // shortcut: keeps only the latest ~6k chars; summarize older parts if calls run long
+  turns(lines).map(l => `${l.who === 'you' ? 'Me' : 'Them'}: ${l.text}`).join('\n').slice(-max); // shortcut: keeps only the latest ~6k chars; summarize older parts if calls run long
+
+/** What the other side said since the user last spoke. */
+export const lastTheirTurn = (lines: Line[]) => { const t = turns(lines).at(-1); return t?.who === 'them' ? t.text : ''; };
+
+/** Did they just ask something? Used to auto-suggest a reply as soon as they finish. */
+export const isQuestion = (text: string) =>
+  /\?\s*$/.test(text.trim()) || /^(can|could|would|will|do|does|did|is|are|was|were|have|has|should|what|why|how|when|where|who|which|tell me|walk me|any thoughts)\b/i.test(text.trim().split(/(?<=[.!?])\s+/).at(-1) ?? '');
 
 export function askMessages(r: AskRequest, vision: boolean) {
   const transcript = transcriptText(r.lines) || '(nothing said yet)';
-  const task = r.mode === 'ask' ? (r.question ?? '').slice(0, 500) : MODES[r.mode].prompt;
+  const theirs = lastTheirTurn(r.lines);
+  const task = r.mode === 'ask' ? (r.question ?? '').slice(0, 500)
+    : r.mode === 'say' && theirs ? `They just said: ${theirs.slice(-600)}\nWrite exactly what I should say back to that, in first person, ready to read out loud: 1-2 natural sentences that directly answer them. Then at most 2 short bullets with facts that back it up.`
+    : MODES[r.mode].prompt;
   const text = `Transcript so far:\n${transcript}\n\nTask: ${task}`;
   const profile = r.profile?.trim().slice(0, 1000);
   const brevity = r.length === 'detailed' ? 'Be thorough but organized: up to 200 words, short bullets welcome, no preamble.' : 'Be fast and brief: lead with the answer, under 80 words, plain text or short bullets, no preamble.';

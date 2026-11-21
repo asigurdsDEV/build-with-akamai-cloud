@@ -6,7 +6,6 @@ import AppKit
 import AVFoundation
 import Carbon.HIToolbox
 import ScreenCaptureKit
-import Speech
 import ServiceManagement
 import WebKit
 
@@ -120,38 +119,33 @@ final class SystemAudio: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 }
 
-/// Live captions for one speaker ("you" = mic, "them" = system audio) with Apple's speech recognizer,
-/// on-device when available. A pause of 1.4 s ends a line.
+/// Live captions for one speaker: "you" = mic, "them" = system audio. Text streams in while they talk (LiveTranscriber).
 final class Captions {
     let who: String
     var send: ((String) -> Void)?
-    var request: SFSpeechAudioBufferRecognitionRequest? // the audio source feeds this
-    private let startSource: (Captions) async throws -> Void
+    private let startSource: (@escaping (AVAudioPCMBuffer) -> Void) async throws -> Void
     private let stopSource: () -> Void
-    private let recognizer = SFSpeechRecognizer(locale: Locale.current) ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
-    private var task: SFSpeechRecognitionTask?
+    private var transcriber: LiveTranscriber?
     private var running = false
-    private var generation = 0
-    private var partial = ""
-    private var commit: DispatchWorkItem?
 
-    init(who: String, start: @escaping (Captions) async throws -> Void, stop: @escaping () -> Void) {
+    init(who: String, start: @escaping (@escaping (AVAudioPCMBuffer) -> Void) async throws -> Void, stop: @escaping () -> Void) {
         self.who = who; startSource = start; stopSource = stop
     }
 
     func start() {
         guard !running else { return }
-        SFSpeechRecognizer.requestAuthorization { auth in
-            DispatchQueue.main.async {
-                guard auth == .authorized else { return self.fail("Allow Speech Recognition for Cue in System Settings → Privacy & Security, then try again.") }
-                Task { @MainActor in
-                    do {
-                        try await self.startSource(self)
-                        log("captions on: \(self.who)")
-                        self.running = true
-                        self.begin()
-                    } catch { self.fail(error.localizedDescription) }
-                }
+        running = true
+        Task { @MainActor in
+            let t = LiveTranscriber()
+            t.onText = { [weak self] final, volatile in DispatchQueue.main.async { self?.emit(final: final, volatile: volatile) } }
+            do {
+                try await t.start()
+                try await startSource { t.feed($0) }
+                transcriber = t
+                log("captions on: \(who)")
+            } catch {
+                await t.stop()
+                fail(error.localizedDescription)
             }
         }
     }
@@ -160,51 +154,16 @@ final class Captions {
         guard running else { return }
         running = false
         stopSource()
-        finishLine()
+        let t = transcriber
+        transcriber = nil
+        Task { await t?.stop() } // flushes the last words
         log("captions off: \(who)")
     }
 
-    private func begin() {
-        guard running, let recognizer, recognizer.isAvailable else { return fail("Speech recognition isn't available right now.") }
-        generation += 1
-        let gen = generation
-        let req = SFSpeechAudioBufferRecognitionRequest()
-        req.shouldReportPartialResults = true
-        req.addsPunctuation = true
-        if recognizer.supportsOnDeviceRecognition { req.requiresOnDeviceRecognition = true }
-        request = req
-        task = recognizer.recognitionTask(with: req) { [weak self] result, err in
-            DispatchQueue.main.async {
-                guard let self, gen == self.generation else { return } // ignore the task we just replaced
-                if let result {
-                    self.partial = result.bestTranscription.formattedString
-                    self.emit(final: "", interim: self.partial)
-                    self.commit?.cancel()
-                    let work = DispatchWorkItem { [weak self] in self?.finishLine(); self?.begin() }
-                    self.commit = work
-                    DispatchQueue.main.asyncAfter(deadline: .now() + (result.isFinal ? 0 : 1.4), execute: work)
-                } else if err != nil, self.running {
-                    self.finishLine()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.begin() } // timed out or silence; keep listening
-                }
-            }
-        }
-    }
-
-    private func finishLine() {
-        commit?.cancel()
-        generation += 1
-        task?.cancel(); request?.endAudio()
-        task = nil; request = nil
-        let text = partial.trimmingCharacters(in: .whitespaces)
-        partial = ""
-        emit(final: text, interim: "")
-    }
-
-    private func emit(final: String, interim: String) { send?("window.__cue && window.__cue.caption(\(jsString(who)), \(jsString(final)), \(jsString(interim)))") }
+    private func emit(final: String, volatile: String) { send?("window.__cue && window.__cue.caption(\(jsString(who)), \(jsString(final)), \(jsString(volatile)))") }
     func fail(_ msg: String) {
         log("captions failed (\(who)): \(msg)")
-        if running { running = false; stopSource(); finishLine() }
+        if running { running = false; stopSource(); transcriber = nil }
         send?("window.__cue && (window.__cue.stopped(\(jsString(who))), window.__cue.error(\(jsString(msg))))")
     }
 }
@@ -236,8 +195,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     let mic = Mic()
     let system = SystemAudio()
     lazy var captions: [String: Captions] = [
-        "you": Captions(who: "you", start: { [mic] c in try await mic.start { c.request?.append($0) } }, stop: { [mic] in mic.stop() }),
-        "them": Captions(who: "them", start: { [system] c in try await system.start { c.request?.appendAudioSampleBuffer($0) } }, stop: { [system] in system.stop() }),
+        "you": Captions(who: "you", start: { [mic] feed in try await mic.start(feed) }, stop: { [mic] in mic.stop() }),
+        "them": Captions(who: "them", start: { [system] feed in try await system.start { if let pcm = AVAudioPCMBuffer.from($0) { feed(pcm) } } }, stop: { [system] in system.stop() }),
     ]
 
     func applicationDidFinishLaunching(_ notification: Notification) {

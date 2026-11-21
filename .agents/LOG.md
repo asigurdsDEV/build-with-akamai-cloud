@@ -19,3 +19,4 @@ Append only. One line per meaningful action. Newest at the bottom.
 2026-11-20 16:43 | claude@aiden | cue-app | Them captions from system audio, separate Me/Them toggles, quote check ignores suggested lines
 2026-11-20 16:50 | claude@aiden | cue-app | opt-in Hide from Screen Sharing menu toggle (NSWindow.sharingType)
 2026-11-20 16:53 | claude@aiden | cue-app | Settings page: about-you context, answer length, glass style, hide from sharing, open at login, clear session; model shown
+2026-11-20 20:45 | claude@aiden | cue-app | SpeechAnalyzer captions (sentences land ~0.05 s after they end), Listen = both sources, auto-suggest replies on questions/turns, replies aimed at their latest turn

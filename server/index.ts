@@ -34,7 +34,7 @@ async function model(path: string, init: RequestInit) {
   if (!res.ok) throw new HttpError(502, `model ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return res;
 }
-const chat = (messages: unknown, stream: boolean) => model('/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: env.AI_MODEL, messages, stream, max_tokens: stream ? 300 : 900, temperature: 0.3 }) });
+const chat = (messages: unknown, stream: boolean, maxTokens = stream ? 300 : 900) => model('/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: env.AI_MODEL, messages, stream, max_tokens: maxTokens, temperature: 0.3 }) });
 
 // POST /api/ask → streams the answer as plain text chunks.
 async function ask(req: IncomingMessage, res: ServerResponse) {
@@ -44,7 +44,7 @@ async function ask(req: IncomingMessage, res: ServerResponse) {
   if (typeof r.image !== 'string' || !r.image.startsWith('data:image/')) r.image = undefined;
   r.profile = typeof r.profile === 'string' ? r.profile.slice(0, 1000) : undefined;
   if (r.length !== 'detailed') r.length = 'short';
-  const upstream = await chat(askMessages(r, VISION), true);
+  const upstream = await chat(askMessages(r, VISION), true, r.mode === 'say' ? 160 : 300);
   res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
   const decoder = new TextDecoder(); let buf = '';
   for await (const chunk of upstream.body as unknown as AsyncIterable<Uint8Array>) {
@@ -106,6 +106,7 @@ createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && url === '/api/status') return send(res, 200, { ai: !!AI, model: AI ? env.AI_MODEL ?? '' : '', vision: VISION, stt: !!(AI && env.STT_MODEL), storage: !!S3 });
     if (req.method === 'POST' && url === '/api/ask') return await ask(req, res);
+    if (req.method === 'POST' && url === '/api/warm') { if (AI) await chat([{ role: 'user', content: 'hi' }], false, 1).catch(() => null); return send(res, 200, { ok: true }); } // loads the model so the first reply in a call is fast
     if (req.method === 'POST' && url === '/api/transcribe') return await transcribe(req, res);
     if (req.method === 'POST' && url === '/api/recap') return await recap(req, res);
     if (req.method === 'GET' && url.startsWith('/api/recap/')) return await getRecap(url.slice(11), res);

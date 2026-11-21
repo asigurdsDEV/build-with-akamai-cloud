@@ -32,8 +32,16 @@ rm -f "$WEB/shared/"*.test.ts
 sed -e "s#__NODE__#$(command -v node)#" -e "s#__OLLAMA__#$(command -v ollama || echo /opt/homebrew/bin/ollama)#" desktop/Info.plist > "$APP/Contents/Info.plist"
 # Sign with a stable identity so macOS keeps Mic / Speech / Screen Recording permissions across rebuilds.
 # Ad-hoc signing (-) changes the app's identity every build, so macOS asks again each time.
-IDENTITY="${CUE_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ {print $2; exit}')}"
+# The first build picks an Apple Development certificate and remembers it (by fingerprint) in desktop/build/,
+# because the keychain can list several in any order and a different one would reset the permissions.
+ID_FILE="$OUT/sign-identity"
+if [[ -n "${CUE_SIGN_IDENTITY:-}" ]]; then IDENTITY="$CUE_SIGN_IDENTITY"
+elif [[ -s "$ID_FILE" ]]; then IDENTITY="$(<"$ID_FILE")"
+else
+  IDENTITY="$(security find-identity -v -p codesigning | awk '/Apple Development/ {print $2; exit}')"
+  [[ -n "$IDENTITY" ]] && echo "$IDENTITY" > "$ID_FILE"
+fi
 codesign --force --sign "${IDENTITY:--}" "$APP"
-echo "Signed with: ${IDENTITY:-ad-hoc (permissions reset on every rebuild)}" | sed -E 's/: [^ ]+@[^ ]+ /: <you> /' 
+echo "Signed with: $(codesign -dvv "$APP" 2>&1 | awk -F= '/^Authority=Apple Development/ {print $2; exit}' | sed -E 's/: .* \(/: … (/' || true)"
 echo "Built $APP"
 open "$APP"

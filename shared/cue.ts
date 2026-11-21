@@ -9,7 +9,7 @@ export interface Recap { summary: string; actions: { text: string; quote?: strin
 export interface SavedRecap { id: string; createdAt: string; recap: Recap; checks: Check[]; lines: Line[] }
 
 export const MODES: Record<Exclude<Mode, 'ask'>, { label: string; prompt: string }> = {
-  say: { label: 'What should I say?', prompt: 'Suggest what I should say next, in first person, ready to read out. One or two sentences, then at most 2 short bullet points of backup facts.' },
+  say: { label: 'What should I say?', prompt: 'Write what I should say next in this conversation.' },
   screen: { label: 'Explain my screen', prompt: "Explain what's on my screen right now and what matters about it for this conversation." },
   summary: { label: 'Summarize so far', prompt: 'Summarize the conversation so far in at most 4 bullets, then any open questions.' },
   followups: { label: 'Follow-up questions', prompt: 'Give me 3 sharp follow-up questions I could ask next.' },
@@ -25,6 +25,28 @@ export function turns(lines: Line[]): Line[] {
   return out;
 }
 
+// How Cue writes a reply for the user to say. The example keeps small local models on format and on facts.
+const REPLY_RULES = `How to write the reply:
+- At most 2 sentences and 35 words. The first sentence answers exactly what they asked or raised, concretely.
+- Only use facts from "About the user" and the call. Never invent numbers, dates, features, guarantees or promises. Never say "definitely" or "guarantee". If you lack a fact, offer to confirm it or suggest a concrete next step.
+- "About the user" describes ME, the person talking. "Them" are the other people.
+- If they raised a worry, name it in a few words, then deal with it using a real fact.
+- Plain spoken words, contractions. No filler like "Absolutely", "Great question", "I understand", "That's good to hear".
+- End with a short question or next step when it helps.
+Format, exactly:
+Say: <the reply, no quote marks>
+- <a real fact that backs it up>
+- <another real fact, or leave this line out>
+
+Example 1. About the user: we build Shopify stores for local shops, usually 4-6 weeks, from $8k.
+They said: How long would a store like ours take?
+Say: For a shop your size it's usually four to six weeks. Want to do a quick kickoff call this week to pin down the plan?
+- Typical build: 4-6 weeks
+
+Example 2. Same user. They said: Our last agency vanished after launch.
+Say: That's a fair worry. We include 30 days of support after launch, so you're not on your own. Should I send you what that covers?
+- 30 days of post-launch support included`;
+
 export const transcriptText = (lines: Line[], max = 6000) =>
   turns(lines).map(l => `${l.who === 'you' ? 'Me' : 'Them'}: ${l.text}`).join('\n').slice(-max); // shortcut: keeps only the latest ~6k chars; summarize older parts if calls run long
 
@@ -39,11 +61,12 @@ export function askMessages(r: AskRequest, vision: boolean) {
   const transcript = transcriptText(r.lines) || '(nothing said yet)';
   const theirs = lastTheirTurn(r.lines);
   const task = r.mode === 'ask' ? (r.question ?? '').slice(0, 500)
-    : r.mode === 'say' && theirs ? `They just said: ${theirs.slice(-600)}\nWrite exactly what I should say back to that, in first person, ready to read out loud: 1-2 natural sentences that directly answer them. Then at most 2 short bullets with facts that back it up.`
+    : r.mode === 'say' && theirs ? `They just said: ${theirs.slice(-600)}\nWrite what I should say back.`
     : MODES[r.mode].prompt;
   const text = `Transcript so far:\n${transcript}\n\nTask: ${task}`;
   const profile = r.profile?.trim().slice(0, 1000);
-  const brevity = r.length === 'detailed' ? 'Be thorough but organized: up to 200 words, short bullets welcome, no preamble.' : 'Be fast and brief: lead with the answer, under 80 words, plain text or short bullets, no preamble.';
+  const brevity = r.mode === 'say' ? `${REPLY_RULES}${r.length === 'detailed' ? '\nYou may use up to 3 sentences and 3 backup points.' : ''}`
+    : r.length === 'detailed' ? 'Be thorough but organized: up to 200 words, short bullets welcome, no preamble.' : 'Be fast and brief: lead with the answer, under 80 words, plain text or short bullets, no preamble.';
   return [
     { role: 'system', content: `You are Cue, a live assistant during the user's call or work session. "Me" is the user, "Them" is everyone else.
 ${brevity}${profile ? `\nAbout the user (use it to tailor answers, never quote it as something said): ${profile}` : ''}

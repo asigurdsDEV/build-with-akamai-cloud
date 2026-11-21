@@ -59,7 +59,7 @@ export function Overlay({ status, sources, lines, interim, answers, recap, notes
           : answers.length ? answers.map((a, i) => (
             <article key={a.id} className={`ov-answer ${i === 0 ? 'latest' : ''} ${a.auto ? 'auto' : ''}`}>
               <h3>{a.label}</h3>
-              {a.error ? <p className="error">{a.error}</p> : <p className="text">{a.text || <span className="ov-thinking">Thinking</span>}{!a.done && a.text && <span className="cursor" />}</p>}
+              {a.error ? <p className="error">{a.error}</p> : <AnswerText text={a.text} done={a.done} />}
               {a.check && <CheckBadge check={a.check} />}
             </article>
           ))
@@ -144,6 +144,18 @@ function Toggle({ label, hint, on, onChange, disabled }: { label: string; hint?:
       <input type="checkbox" role="switch" checked={on} disabled={disabled} onChange={e => onChange(e.target.checked)} />
     </label>
   );
+}
+
+// Replies come as "Say: <line>" plus backup points: show the line to read out big, the rest small.
+function AnswerText({ text, done }: { text: string; done: boolean }) {
+  const cursor = !done && text && <span className="cursor" />;
+  if (!text) return <p className="text"><span className="ov-thinking">Thinking</span></p>;
+  const m = text.match(/^\s*Say:\s*([^\n]*)\n?([\s\S]*)$/i);
+  if (!m) return <p className="text">{text}{cursor}</p>;
+  return <>
+    <p className="ov-say">{m[1]}{!m[2].trim() && cursor}</p>
+    {m[2].trim() && <p className="text ov-backup">{m[2].trim()}{cursor}</p>}
+  </>;
 }
 
 const Icon = ({ d }: { d: string }) => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>;

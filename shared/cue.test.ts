@@ -42,8 +42,8 @@ describe('prompts', () => {
   it('adds the user profile and answer length to the system prompt', () => {
     const sys = askMessages({ mode: 'say', lines, profile: 'I sell solar panels', length: 'detailed' }, false)[0].content as string;
     expect(sys).toContain('I sell solar panels');
-    expect(sys).toContain('up to 200 words');
-    expect(askMessages({ mode: 'say', lines }, false)[0].content).toContain('under 80 words');
+    expect(sys).toContain('up to 3 sentences');
+    expect(askMessages({ mode: 'summary', lines }, false)[0].content).toContain('under 80 words');
   });
   it('caps a custom question', () => {
     const m = askMessages({ mode: 'ask', question: 'x'.repeat(2000), lines }, false);
@@ -68,6 +68,7 @@ describe('turns and auto-answer', () => {
   });
   it('aims "What should I say?" at their latest turn', () => {
     expect(askMessages({ mode: 'say', lines: call }, false)[1].content).toContain('They just said: Sure. Our main concern is the price. Can you do anything on that?');
+    expect(askMessages({ mode: 'say', lines: call }, false)[0].content).toContain('Say: <the reply');
   });
 });
 

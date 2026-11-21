@@ -43,6 +43,8 @@ function Session() {
   useEffect(() => { fetch('/api/status').then(r => r.json()).then(setStatus).catch(() => setStatus({ ai: false, vision: false, stt: false, storage: false })); }, []);
   const addLine = (who: Line['who'], text: string) => text && setLines(ls => [...ls, { who, text, at: Math.round(performance.now() - t0.current) }]);
   const note = (msg: string) => setNotes(n => n.includes(msg) ? n : [...n, msg]);
+  const warm = () => { fetch('/api/warm', { method: 'POST' }).catch(() => {}); }; // keep the model loaded so replies start instantly
+  useEffect(() => { warm(); if (native) addEventListener('focus', warm); return () => removeEventListener('focus', warm); }, []);
   const sourceOff = (who: Line['who']) => { delete sourceStops.current[who]; setSources(s => ({ ...s, [who]: false })); setInterim(i => ({ ...i, [who]: '' })); };
   useEffect(() => { if (native) onNativeEvents(note, sourceOff); }, []);
   useEffect(() => { if (native) setLive(sources.you || sources.them); }, [sources]);
@@ -59,6 +61,7 @@ function Session() {
     if (sources.you || sources.them) return stop();
     if (recap) { setLines([]); setAnswers([]); setRecap(null); } // a new session after a recap
     setNotes([]);
+    warm();
     sourceOn('them'); sourceOn('you');
   }
 
@@ -73,7 +76,7 @@ function Session() {
       if (interimRef.current.them || interimRef.current.you) return; // someone is mid-sentence; their next line re-arms this
       answeredUpTo.current = linesRef.current.length;
       ask('say', undefined, true);
-    }, asked ? 700 : 2200);
+    }, asked ? 300 : 1500);
   }, [lines, prefs.auto, status?.ai]);
   useEffect(() => { if (interim.them || interim.you) window.clearTimeout(autoTimer.current); }, [interim]);
 
@@ -109,7 +112,8 @@ function Session() {
     if (auto) { autoAbort.current?.abort(); autoAbort.current = abort; } // a newer turn replaces an unfinished auto reply
     setAnswers(a => [{ id, label, text: '', done: false, auto }, ...a]);
     try {
-      const image = !status?.vision ? undefined : native ? await nativeFrame() : screen ? await grabFrame(screen) : undefined;
+      const wantsScreen = status?.vision && (mode === 'screen' || mode === 'ask'); // replies skip the screenshot: it costs the model ~2.5 s
+      const image = !wantsScreen ? undefined : native ? await nativeFrame() : screen ? await grabFrame(screen) : undefined;
       const res = await fetch('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode, question, lines: linesRef.current, image, ...prefsRef.current }), signal: abort.signal });
       if (!res.ok || !res.body) throw new Error((await res.json().catch(() => null))?.error ?? `error ${res.status}`);
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();

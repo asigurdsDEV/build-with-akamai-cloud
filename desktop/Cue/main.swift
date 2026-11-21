@@ -235,7 +235,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     func startBackendThenLoad() {
         let env = serverEnv()
         if env["AI_BASE_URL"]?.contains(":11434") == true, !portIsOpen(11434), let ollama = info["CueOllama"] as? String, FileManager.default.fileExists(atPath: ollama) {
-            spawn(ollama, ["serve"])
+            spawn(ollama, ["serve"], env: ["OLLAMA_KEEP_ALIVE": "2h"]) // keep the model in memory between replies
         }
         if !portIsOpen(port) { spawn(info["CueNode"] as? String ?? "/opt/homebrew/bin/node", ["server/index.ts"], env: env) }
         DispatchQueue.global().async {

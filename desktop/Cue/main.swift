@@ -298,6 +298,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         panel.hidesOnDeactivate = false
         panel.minSize = NSSize(width: 360, height: 420)
         panel.setFrameAutosaveName("CuePanel") // remembers where you dragged it
+        applySharing()
 
         let glass = NSGlassEffectView(frame: NSRect(origin: .zero, size: size))
         glass.cornerRadius = 28
@@ -332,6 +333,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     func hide() { panel.orderOut(nil) }
     @objc func toggle() { panel.isVisible && panel.isKeyWindow ? hide() : show() }
     @objc func reload() { web.reload() }
+    /// Opt-in: ask screen sharing and recording apps to leave the panel out. Each capture app decides whether it honors this.
+    var hideFromCapture: Bool {
+        get { UserDefaults.standard.bool(forKey: "hideFromCapture") }
+        set { UserDefaults.standard.set(newValue, forKey: "hideFromCapture"); applySharing() }
+    }
+    func applySharing() { panel.sharingType = hideFromCapture ? .none : .readOnly }
+    @objc func toggleHide(_ item: NSMenuItem) {
+        hideFromCapture.toggle()
+        item.state = hideFromCapture ? .on : .off
+        log("hide from screen sharing: \(hideFromCapture)")
+    }
+
     @objc func toggleLogin(_ item: NSMenuItem) {
         let service = SMAppService.mainApp
         do { if service.status == .enabled { try service.unregister() } else { try service.register() } } catch { NSLog("Cue: login item: \(error)") }
@@ -346,6 +359,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         showItem.keyEquivalentModifierMask = .command
         menu.addItem(showItem)
         menu.addItem(NSMenuItem(title: "Reload", action: #selector(reload), keyEquivalent: "r"))
+        let hide = NSMenuItem(title: "Hide from Screen Sharing", action: #selector(toggleHide(_:)), keyEquivalent: "")
+        hide.state = hideFromCapture ? .on : .off
+        menu.addItem(hide)
         let login = NSMenuItem(title: "Open at Login", action: #selector(toggleLogin(_:)), keyEquivalent: "")
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { MODES, checkAnswer, type Check, type Line, type Mode, type SavedRecap } from '../shared/cue.ts';
-import { canCaptionMic, captionMic, grabFrame, native, nativeCaptions, nativeFrame, onNativeError, recordTabAudio, shareScreen } from './capture.ts';
+import { canCaptionMic, captionMic, grabFrame, native, nativeCaptions, nativeFrame, onNativeEvents, recordTabAudio, shareScreen } from './capture.ts';
 import { Overlay } from './Overlay.tsx';
 
 export interface Status { ai: boolean; vision: boolean; stt: boolean; storage: boolean }
@@ -17,8 +17,10 @@ export function App() {
 function Session() {
   const [status, setStatus] = useState<Status | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
-  const [interim, setInterim] = useState('');
+  const [interim, setInterim] = useState({ you: '', them: '' });
   const [live, setLive] = useState(false);
+  const [sources, setSources] = useState({ you: false, them: false }); // Cue.app: which caption streams are on
+  const sourceStops = useRef<Partial<Record<Line['who'], () => void>>>({});
   const [screen, setScreen] = useState<MediaStream | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
   const [answers, setAnswers] = useState<Answer[]>([]);
@@ -31,12 +33,23 @@ function Session() {
   useEffect(() => { fetch('/api/status').then(r => r.json()).then(setStatus).catch(() => setStatus({ ai: false, vision: false, stt: false, storage: false })); }, []);
   const addLine = (who: Line['who'], text: string) => text && setLines(ls => [...ls, { who, text, at: Math.round(performance.now() - t0.current) }]);
   const note = (msg: string) => setNotes(n => n.includes(msg) ? n : [...n, msg]);
-  useEffect(() => { if (native) onNativeError(note); }, []);
+  const sourceOff = (who: Line['who']) => { delete sourceStops.current[who]; setSources(s => ({ ...s, [who]: false })); setInterim(i => ({ ...i, [who]: '' })); };
+  useEffect(() => { if (native) onNativeEvents(note, sourceOff); }, []);
+  useEffect(() => { if (native) setLive(sources.you || sources.them); }, [sources]);
+
+  // Cue.app: turn captions of your mic ("you") or of the call audio ("them") on or off, independently.
+  function toggleSource(who: Line['who']) {
+    if (sources[who]) { sourceStops.current[who]?.(); sourceOff(who); return; }
+    if (!sources.you && !sources.them && recap) { setLines([]); setAnswers([]); setRecap(null); } // a new session after a recap
+    if (!t0.current) t0.current = performance.now();
+    setNotes([]);
+    sourceStops.current[who] = nativeCaptions(who, (final, partial) => { addLine(who, final); setInterim(i => ({ ...i, [who]: partial })); });
+    setSources(s => ({ ...s, [who]: true }));
+  }
 
   async function start() {
     setLines([]); setAnswers([]); setRecap(null); setNotes([]); t0.current = performance.now(); setLive(true);
-    const onText = (final: string, partial: string) => { addLine('you', final); setInterim(partial); };
-    if (native) { stops.current.push(nativeCaptions(onText, note)); return; } // Cue.app: native captions; the screen is captured when you ask
+    const onText = (final: string, partial: string) => { addLine('you', final); setInterim(i => ({ ...i, you: partial })); };
     stops.current.push(captionMic(onText, note));
     try {
       const s = await shareScreen();
@@ -55,7 +68,7 @@ function Session() {
     } catch { note('Screen not shared: answers use the conversation only.'); }
   }
 
-  function stop() { stops.current.forEach(f => f()); stops.current = []; setLive(false); setScreen(null); setInterim(''); }
+  function stop() { stops.current.forEach(f => f()); stops.current = []; (['you', 'them'] as const).forEach(w => { sourceStops.current[w]?.(); sourceOff(w); }); setLive(false); setScreen(null); setInterim({ you: '', them: '' }); }
 
   async function ask(mode: Mode, question?: string) {
     const id = Date.now();
@@ -99,7 +112,7 @@ function Session() {
     return () => targets.forEach(t => t.removeEventListener('keydown', onKey));
   });
 
-  if (native) return <Overlay {...{ status, live, lines, interim, answers, recap, notes, start, stop, ask, endAndRecap }} />;
+  if (native) return <Overlay {...{ status, sources, lines, interim, answers, recap, notes, toggleSource, ask, endAndRecap }} />;
   const panel = <AskPanel answers={answers} disabled={!status?.ai} onAsk={ask} />;
 
   return (
@@ -125,7 +138,7 @@ function Session() {
         ? <RecapView saved={recap} storage={!!status?.storage} />
         : (
           <main className="grid">
-            <Transcript lines={lines} interim={interim} live={live} onStart={start} />
+            <Transcript lines={lines} interim={interim.you} live={live} onStart={start} />
             {pip ? <section className="panel muted">Answers are in the pop-out window. <button onClick={() => pip.close()}>Bring back</button></section> : panel}
           </main>
         )}

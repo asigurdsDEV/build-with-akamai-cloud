@@ -16,6 +16,12 @@ let settingsURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathC
 let port = 8787
 let logURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Cue.log")
 
+/// One line in ~/Library/Logs/Cue.log (status only, never what anyone said).
+func log(_ msg: String) {
+    guard let h = try? FileHandle(forWritingTo: logURL) else { return }
+    h.seekToEndOfFile(); h.write(Data("\(Date()) Cue: \(msg)\n".utf8)); try? h.close()
+}
+
 func jsString(_ s: String) -> String {
     String(data: (try? JSONSerialization.data(withJSONObject: s, options: .fragmentsAllowed)) ?? Data("\"\"".utf8), encoding: .utf8)!
 }
@@ -64,46 +70,102 @@ enum HotKey {
     }
 }
 
-/// Mic captions with Apple's speech recognizer (on-device when available). A pause of 1.4 s ends a line.
-final class Captions {
-    var send: ((String) -> Void)?
+struct CueError: LocalizedError { let errorDescription: String? ; init(_ m: String) { errorDescription = m } }
+
+/// Your mic, through AVAudioEngine.
+final class Mic {
     private let engine = AVAudioEngine()
+    func start(_ feed: @escaping (AVAudioPCMBuffer) -> Void) async throws {
+        guard await AVCaptureDevice.requestAccess(for: .audio) else { throw CueError("Allow the Microphone for Cue in System Settings → Privacy & Security, then try again.") }
+        let input = engine.inputNode
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0)) { buf, _ in feed(buf) }
+        engine.prepare()
+        do { try engine.start() } catch { throw CueError("Couldn't start the microphone: \(error.localizedDescription)") }
+    }
+    func stop() { engine.stop(); engine.inputNode.removeTap(onBus: 0) }
+}
+
+/// Everything your Mac plays (the other people on a call), through ScreenCaptureKit. Cue's own sounds are left out.
+final class SystemAudio: NSObject, SCStreamOutput, SCStreamDelegate {
+    private var stream: SCStream?
+    private var feed: ((CMSampleBuffer) -> Void)?
+    private let queue = DispatchQueue(label: "cue.system-audio")
+    var onStop: ((String) -> Void)?
+
+    func start(_ feed: @escaping (CMSampleBuffer) -> Void) async throws {
+        let content: SCShareableContent
+        do { content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) }
+        catch { throw CueError("To hear the other people on a call, allow Screen & System Audio Recording for Cue in System Settings → Privacy & Security, then reopen Cue.") }
+        guard let display = content.displays.first else { throw CueError("No display found for system audio.") }
+        let config = SCStreamConfiguration()
+        config.capturesAudio = true
+        config.excludesCurrentProcessAudio = true
+        config.sampleRate = 48_000
+        config.channelCount = 1
+        config.width = 2; config.height = 2 // audio only; keep the video side as small as it goes
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
+        let s = SCStream(filter: SCContentFilter(display: display, excludingApplications: [], exceptingWindows: []), configuration: config, delegate: self)
+        try s.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
+        self.feed = feed
+        try await s.startCapture()
+        stream = s
+    }
+    func stop() { stream?.stopCapture(); stream = nil; feed = nil }
+    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        if type == .audio, sampleBuffer.isValid { feed?(sampleBuffer) }
+    }
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        DispatchQueue.main.async { self.stream = nil; self.onStop?("System audio stopped: \(error.localizedDescription)") }
+    }
+}
+
+/// Live captions for one speaker ("you" = mic, "them" = system audio) with Apple's speech recognizer,
+/// on-device when available. A pause of 1.4 s ends a line.
+final class Captions {
+    let who: String
+    var send: ((String) -> Void)?
+    var request: SFSpeechAudioBufferRecognitionRequest? // the audio source feeds this
+    private let startSource: (Captions) async throws -> Void
+    private let stopSource: () -> Void
     private let recognizer = SFSpeechRecognizer(locale: Locale.current) ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
-    private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var running = false
     private var generation = 0
     private var partial = ""
     private var commit: DispatchWorkItem?
 
+    init(who: String, start: @escaping (Captions) async throws -> Void, stop: @escaping () -> Void) {
+        self.who = who; startSource = start; stopSource = stop
+    }
+
     func start() {
+        guard !running else { return }
         SFSpeechRecognizer.requestAuthorization { auth in
             DispatchQueue.main.async {
-                guard auth == .authorized else { return self.error("Allow Speech Recognition for Cue in System Settings → Privacy & Security, then try again.") }
-                AVCaptureDevice.requestAccess(for: .audio) { ok in
-                    DispatchQueue.main.async {
-                        guard ok else { return self.error("Allow the Microphone for Cue in System Settings → Privacy & Security, then try again.") }
+                guard auth == .authorized else { return self.fail("Allow Speech Recognition for Cue in System Settings → Privacy & Security, then try again.") }
+                Task { @MainActor in
+                    do {
+                        try await self.startSource(self)
+                        log("captions on: \(self.who)")
                         self.running = true
-                        let input = self.engine.inputNode
-                        input.removeTap(onBus: 0)
-                        input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0)) { [weak self] buf, _ in self?.request?.append(buf) }
-                        do { self.engine.prepare(); try self.engine.start() } catch { return self.error("Couldn't start the microphone: \(error.localizedDescription)") }
                         self.begin()
-                    }
+                    } catch { self.fail(error.localizedDescription) }
                 }
             }
         }
     }
 
     func stop() {
+        guard running else { return }
         running = false
+        stopSource()
         finishLine()
-        engine.stop()
-        engine.inputNode.removeTap(onBus: 0)
+        log("captions off: \(who)")
     }
 
     private func begin() {
-        guard running, let recognizer, recognizer.isAvailable else { return error("Speech recognition isn't available right now.") }
+        guard running, let recognizer, recognizer.isAvailable else { return fail("Speech recognition isn't available right now.") }
         generation += 1
         let gen = generation
         let req = SFSpeechAudioBufferRecognitionRequest()
@@ -123,7 +185,7 @@ final class Captions {
                     DispatchQueue.main.asyncAfter(deadline: .now() + (result.isFinal ? 0 : 1.4), execute: work)
                 } else if err != nil, self.running {
                     self.finishLine()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.begin() } // recognizer timed out or hit silence; keep listening
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.begin() } // timed out or silence; keep listening
                 }
             }
         }
@@ -139,8 +201,12 @@ final class Captions {
         emit(final: text, interim: "")
     }
 
-    private func emit(final: String, interim: String) { send?("window.__cue && window.__cue.caption(\(jsString(final)), \(jsString(interim)))") }
-    private func error(_ msg: String) { running = false; send?("window.__cue && window.__cue.error(\(jsString(msg)))") }
+    private func emit(final: String, interim: String) { send?("window.__cue && window.__cue.caption(\(jsString(who)), \(jsString(final)), \(jsString(interim)))") }
+    func fail(_ msg: String) {
+        log("captions failed (\(who)): \(msg)")
+        if running { running = false; stopSource(); finishLine() }
+        send?("window.__cue && (window.__cue.stopped(\(jsString(who))), window.__cue.error(\(jsString(msg))))")
+    }
 }
 
 /// A screenshot of the main display, leaving Cue's own panel out. JPEG data URL, ~1440 px wide.
@@ -164,13 +230,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     var web: WKWebView!
     var statusItem: NSStatusItem!
     var children: [Process] = []
-    let captions = Captions()
+    let mic = Mic()
+    let system = SystemAudio()
+    lazy var captions: [String: Captions] = [
+        "you": Captions(who: "you", start: { [mic] c in try await mic.start { c.request?.append($0) } }, stop: { [mic] in mic.stop() }),
+        "them": Captions(who: "them", start: { [system] c in try await system.start { c.request?.appendAudioSampleBuffer($0) } }, stop: { [system] in system.stop() }),
+    ]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // menu bar only, no Dock icon
         buildPanel()
         buildMenuBar()
-        captions.send = { [weak self] js in self?.web.evaluateJavaScript(js) }
+        for c in captions.values { c.send = { [weak self] js in self?.web.evaluateJavaScript(js) } }
+        system.onStop = { [weak self] msg in self?.captions["them"]?.fail(msg) }
         HotKey.register { [weak self] in self?.toggle() }
         if !UserDefaults.standard.bool(forKey: "loginItemOffered") { // on by default once; the menu toggle is the user's choice after that
             UserDefaults.standard.set(true, forKey: "loginItemOffered")
@@ -181,7 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        captions.stop()
+        captions.values.forEach { $0.stop() }
         children.forEach { $0.terminate() }
     }
 
@@ -289,7 +361,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
         switch type {
         case "hide": hide()
-        case "listen": (body["on"] as? Bool ?? false) ? captions.start() : captions.stop()
+        case "listen":
+            guard let c = captions[body["source"] as? String ?? "you"] else { return }
+            (body["on"] as? Bool ?? false) ? c.start() : c.stop()
         case "frame":
             let id = (body["id"] as? NSNumber)?.intValue ?? 0
             Task { @MainActor in

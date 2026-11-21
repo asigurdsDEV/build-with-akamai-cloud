@@ -21,6 +21,12 @@ describe('checkAnswer', () => {
     const c = checkAnswer('“Sounds good, let’s go. “ship the pilot by March.”', lines);
     expect(c.status).toBe('grounded');
   });
+  it('suggested lines (quotes that start a line or bullet) are not checked; inline claims are', () => {
+    const c = checkAnswer('“Totally fair, let me see what I can do.”\n* “We could split it into two payments.”\nThey said “budget is fifty thousand”.', lines);
+    expect(c.quotes.map(q => q.text)).toEqual(['budget is fifty thousand']);
+    expect(c.status).toBe('unverified');
+    expect(checkAnswer('“Totally fair, let me see what I can do.”', lines).status).toBe('general');
+  });
   it('general when there are no quotes', () => {
     expect(checkAnswer('A pilot usually takes 6 weeks.', lines).status).toBe('general');
   });

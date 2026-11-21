@@ -63,19 +63,22 @@ export function recordTabAudio(stream: MediaStream, onChunk: (blob: Blob) => voi
 type NativeHandler = { postMessage(msg: unknown): void };
 const nativeHandler = (window as unknown as { webkit?: { messageHandlers?: { cue?: NativeHandler } } }).webkit?.messageHandlers?.cue;
 export const native = !!nativeHandler || new URLSearchParams(location.search).has('overlay'); // ?overlay previews the Cue.app layout in a browser
-const hooks: { caption?: (final: string, interim: string) => void; error?: (msg: string) => void; frames: Map<number, (url?: string) => void> } = { frames: new Map() };
+type Who = 'you' | 'them';
+const hooks: { caption: Partial<Record<Who, (final: string, interim: string) => void>>; error?: (msg: string) => void; stopped?: (who: Who) => void; frames: Map<number, (url?: string) => void> } = { caption: {}, frames: new Map() };
 (window as unknown as { __cue: unknown }).__cue = {
-  caption: (final: string, interim: string) => hooks.caption?.(final, interim),
+  caption: (who: Who, final: string, interim: string) => hooks.caption[who]?.(final, interim),
+  stopped: (who: Who) => { hooks.caption[who] = undefined; hooks.stopped?.(who); },
   error: (msg: string) => hooks.error?.(msg),
   frame: (id: number, url?: string) => { hooks.frames.get(id)?.(url || undefined); hooks.frames.delete(id); },
 };
-export const onNativeError = (fn: (msg: string) => void) => { hooks.error = fn; };
+export const onNativeEvents = (error: (msg: string) => void, stopped: (who: Who) => void) => { hooks.error = error; hooks.stopped = stopped; };
 export const nativeSend = (msg: { type: string; [k: string]: unknown }) => nativeHandler?.postMessage(msg);
 
-export function nativeCaptions(onText: (final: string, interim: string) => void, onError: (msg: string) => void) {
-  hooks.caption = onText; hooks.error = onError;
-  nativeSend({ type: 'listen', on: true });
-  return () => { nativeSend({ type: 'listen', on: false }); hooks.caption = undefined; };
+// "you" = your mic, "them" = what your Mac plays (the other people on a call). Each can be on or off on its own.
+export function nativeCaptions(who: Who, onText: (final: string, interim: string) => void) {
+  hooks.caption[who] = onText;
+  nativeSend({ type: 'listen', source: who, on: true });
+  return () => { nativeSend({ type: 'listen', source: who, on: false }); };
 }
 
 // A screenshot of what's behind the Cue panel (the panel itself is left out).

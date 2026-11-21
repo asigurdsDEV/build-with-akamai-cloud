@@ -16,3 +16,4 @@ Append only. One line per meaningful action. Newest at the bottom.
 2026-11-20 16:10 | claude@aiden | pivot | repo is now Aiden + Caleb only, building Cue (live AI copilot); Who's the Bot? kept on branch aiden/game-skeleton for the team of four; claimed Cue v1
 2026-11-20 16:14 | claude@aiden | cue | Cue v1: captions, screen context, streamed answers, quote check, pop-out, recaps in Object Storage; decision 001, contracts, board tasks
 2026-11-20 16:33 | claude@aiden | cue-app | Cue.app: native Liquid Glass panel, ⌘\ hotkey, on-device captions, screen capture, bundled server, local Ollama gemma3:4b
+2026-11-20 16:43 | claude@aiden | cue-app | Them captions from system audio, separate Me/Them toggles, quote check ignores suggested lines

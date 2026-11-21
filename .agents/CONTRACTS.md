@@ -29,6 +29,6 @@ The interfaces between parts of Cue. Agents must not break these without a decis
 
 ## Cue.app bridge (page ↔ native)
 
-- Page → native: `webkit.messageHandlers.cue.postMessage({ type })` with `hide`, `listen` (`on: boolean`), `frame` (`id: number`).
-- Native → page: `window.__cue.caption(final, interim)`, `window.__cue.frame(id, jpegDataUrl | "")`, `window.__cue.error(message)`, `window.__cueFocus()`.
+- Page → native: `webkit.messageHandlers.cue.postMessage({ type })` with `hide`, `listen` (`source: "you" | "them"`, `on: boolean`), `frame` (`id: number`). `you` = mic, `them` = system audio.
+- Native → page: `window.__cue.caption(who, final, interim)`, `window.__cue.stopped(who)`, `window.__cue.frame(id, jpegDataUrl | "")`, `window.__cue.error(message)`, `window.__cueFocus()`.
 - The app bundles `dist/`, `server/`, `shared/` and `aws4fetch` in `Contents/Resources/web` and runs the server from there. Settings: `~/Library/Application Support/Cue/cue.env`.

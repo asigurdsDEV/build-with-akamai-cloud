@@ -43,10 +43,13 @@ Only include action items that someone actually said. Copy quotes exactly.` },
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
 // The visible output check: every quote the model claims was said must really be in the transcript.
-export function checkAnswer(answer: string, lines: Line[]): Check {
+// A quote that starts its own line or bullet is a suggested line to say, not a claim, so it isn't checked
+// (small models quote their suggestions even when told not to). Recap quotes are always checked.
+export function checkAnswer(answer: string, lines: Line[], skipSuggestions = true): Check {
   const said = norm(lines.map(l => l.text).join(' '));
-  const quotes = [...answer.matchAll(/["“]([^"“”]{4,200})["”]/g)].map(m => ({ text: m[1], found: said.includes(norm(m[1])) }));
-  if (!quotes.length) return { status: 'general', quotes, note: 'No quotes: from general knowledge or the screen.' };
+  const isSuggestion = (at: number) => skipSuggestions && /^[\s*•\-–\d.)]*$/.test(answer.slice(answer.lastIndexOf('\n', at - 1) + 1, at));
+  const quotes = [...answer.matchAll(/["“]([^"“”]{4,200})["”]/g)].filter(m => !isSuggestion(m.index!)).map(m => ({ text: m[1], found: said.includes(norm(m[1])) }));
+  if (!quotes.length) return { status: 'general', quotes, note: 'Nothing quoted from the call: general knowledge, the screen, or suggested lines.' };
   const missing = quotes.filter(q => !q.found).length;
   const n = quotes.length, of = n === 1 ? 'The quote' : `${missing} of ${n} quotes`;
   return missing
@@ -64,4 +67,4 @@ export function parseRecap(raw: string): Recap {
   };
 }
 
-export const recapChecks = (r: Recap, lines: Line[]) => r.actions.map(a => checkAnswer(a.quote ? `"${a.quote}"` : '', lines));
+export const recapChecks = (r: Recap, lines: Line[]) => r.actions.map(a => checkAnswer(a.quote ? `"${a.quote}"` : '', lines, false));

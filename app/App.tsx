@@ -4,11 +4,11 @@ import { MODES, checkAnswer, isQuestion, lastTheirTurn, type Check, type Line, t
 import { canCaptionMic, captionMic, grabFrame, native, nativeCaptions, nativeFrame, onNativeEvents, onNativeVisible, recordTabAudio, shareScreen } from './capture.ts';
 import { Overlay } from './Overlay.tsx';
 
-export interface Prefs { profile: string; length: 'short' | 'detailed'; auto: boolean }
-const DEFAULT_PREFS: Prefs = { profile: '', length: 'short', auto: true };
+export interface Prefs { profile: string; length: 'short' | 'detailed'; auto: boolean; model: string } // model '' = the server's default
+const DEFAULT_PREFS: Prefs = { profile: '', length: 'short', auto: true, model: '' };
 const loadPrefs = (): Prefs => { try { return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem('cue.prefs') ?? '{}') }; } catch { return DEFAULT_PREFS; } };
-export interface Status { model?: string; loaded?: boolean; ai: boolean; vision: boolean; stt: boolean; storage: boolean }
-export interface Answer { id: number; label: string; text: string; done: boolean; auto?: boolean; check?: Check; error?: string }
+export interface Status { model?: string; models?: string[]; loaded?: string[]; ai: boolean; vision: boolean; stt: boolean; storage: boolean }
+export interface Answer { id: number; label: string; text: string; done: boolean; auto?: boolean; stopped?: boolean; check?: Check; error?: string }
 type PipWindow = Window & typeof globalThis;
 const pipApi = (window as unknown as { documentPictureInPicture?: { requestWindow(o: { width: number; height: number }): Promise<PipWindow> } }).documentPictureInPicture;
 
@@ -35,8 +35,8 @@ function Session() {
   const linesRef = useRef(lines); linesRef.current = lines;
   const interimRef = useRef(interim); interimRef.current = interim;
   const autoTimer = useRef(0);
-  const answeredUpTo = useRef(0); // lines.length when Cue last auto-answered
-  const autoAbort = useRef<AbortController | null>(null);
+  const answeredUpTo = useRef(0); // lines.length when Cue last started a reply
+  const inflight = useRef(new Map<number, AbortController>()); // answers still being written
   const stops = useRef<(() => void)[]>([]);
   const t0 = useRef(0);
 
@@ -44,7 +44,7 @@ function Session() {
   const addLine = (who: Line['who'], text: string) => text && setLines(ls => [...ls, { who, text, at: Math.round(performance.now() - t0.current) }]);
   const note = (msg: string) => setNotes(n => n.includes(msg) ? n : [...n, msg]);
   // The model is loaded only while Cue is on screen or listening; 90 s after it's hidden and quiet, it's unloaded to free memory.
-  const warm = () => { fetch('/api/warm', { method: 'POST' }).catch(() => {}); };
+  const warm = () => { fetch('/api/warm', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: prefsRef.current.model }) }).catch(() => {}); };
   const shown = useRef(true);
   const sleepTimer = useRef(0);
   const liveRef = useRef(live); liveRef.current = live;
@@ -90,7 +90,6 @@ function Session() {
     if (!asked && lastTheirTurn(lines).split(/\s+/).length < 12) return;
     autoTimer.current = window.setTimeout(() => {
       if (interimRef.current.them || interimRef.current.you) return; // someone is mid-sentence; their next line re-arms this
-      answeredUpTo.current = linesRef.current.length;
       ask('say', undefined, true);
     }, asked ? 300 : 1500);
   }, [lines, prefs.auto, status?.ai]);
@@ -124,28 +123,35 @@ function Session() {
     const theirs = lastTheirTurn(linesRef.current);
     const label = mode === 'ask' ? question! : auto ? `Reply to: ${theirs.length > 70 ? '…' + theirs.slice(-70) : theirs}` : MODES[mode].label;
     const update = (patch: Partial<Answer>) => setAnswers(a => a.map(x => x.id === id ? { ...x, ...patch } : x));
+    // A new question always wins: stop anything still being written so the model is free right away.
+    inflight.current.forEach(c => c.abort());
     const abort = new AbortController();
-    if (auto) { autoAbort.current?.abort(); autoAbort.current = abort; } // a newer turn replaces an unfinished auto reply
+    inflight.current.set(id, abort);
+    let focus: string | undefined;
+    if (mode === 'say') { // answer what they said since the last reply, not an older question
+      focus = linesRef.current.slice(answeredUpTo.current).filter(l => l.who === 'them').map(l => l.text).join(' ') || undefined;
+      answeredUpTo.current = linesRef.current.length;
+    }
     setAnswers(a => [{ id, label, text: '', done: false, auto }, ...a]);
     try {
       const wantsScreen = status?.vision && (mode === 'screen' || mode === 'ask'); // replies skip the screenshot: it costs the model ~2.5 s
       const image = !wantsScreen ? undefined : native ? await nativeFrame() : screen ? await grabFrame(screen) : undefined;
-      const res = await fetch('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode, question, lines: linesRef.current, image, ...prefsRef.current }), signal: abort.signal });
+      const res = await fetch('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode, question, lines: linesRef.current, image, focus, ...prefsRef.current }), signal: abort.signal });
       if (!res.ok || !res.body) throw new Error((await res.json().catch(() => null))?.error ?? `error ${res.status}`);
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
       let text = '';
       for (let r = await reader.read(); !r.done; r = await reader.read()) update({ text: (text += r.value) });
       update({ done: true, check: checkAnswer(text, linesRef.current) });
     } catch (e) {
-      if (abort.signal.aborted) setAnswers(a => a.filter(x => x.id !== id)); // replaced by a newer auto reply
+      if (abort.signal.aborted) setAnswers(a => a.flatMap(x => x.id !== id ? [x] : x.text ? [{ ...x, done: true, stopped: true }] : [])); // replaced by a newer question
       else update({ done: true, error: (e as Error).message });
-    }
+    } finally { inflight.current.delete(id); }
   }
 
   async function endAndRecap() {
     stop(); setRecap('loading');
     try {
-      const r = await fetch('/api/recap', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lines: linesRef.current }) });
+      const r = await fetch('/api/recap', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lines: linesRef.current, model: prefsRef.current.model }) });
       if (!r.ok) throw new Error((await r.json()).error);
       setRecap(await r.json());
     } catch (e) { setRecap(null); note(`Recap failed: ${(e as Error).message}`); }
@@ -168,8 +174,10 @@ function Session() {
     return () => targets.forEach(t => t.removeEventListener('keydown', onKey));
   });
 
+  // Switching models: free the old one's memory, load the new one.
+  const chooseModel = (model: string) => { setPrefs({ model }); prefsRef.current = { ...prefsRef.current, model }; fetch('/api/unload', { method: 'POST' }).catch(() => {}).finally(warm); };
   const clearSession = () => { stop(); setLines([]); setAnswers([]); setRecap(null); setNotes([]); t0.current = 0; answeredUpTo.current = 0; };
-  if (native) return <Overlay {...{ status, sources, lines, interim, answers, recap, notes, toggleSource, toggleListen, ask, endAndRecap, prefs, setPrefs, clearSession }} />;
+  if (native) return <Overlay {...{ status, sources, lines, interim, answers, recap, notes, toggleSource, toggleListen, ask, endAndRecap, prefs, setPrefs, chooseModel, clearSession }} />;
   const panel = <AskPanel answers={answers} disabled={!status?.ai} onAsk={ask} />;
 
   return (

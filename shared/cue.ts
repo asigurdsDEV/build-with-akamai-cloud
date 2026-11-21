@@ -2,7 +2,7 @@
 
 export interface Line { who: 'you' | 'them'; text: string; at: number } // at = ms since session start
 export type Mode = 'say' | 'screen' | 'summary' | 'followups' | 'ask';
-export interface AskRequest { mode: Mode; question?: string; lines: Line[]; image?: string; profile?: string; length?: 'short' | 'detailed' } // image = JPEG data URL of the screen; profile = what the user told Cue about themselves
+export interface AskRequest { mode: Mode; question?: string; lines: Line[]; image?: string; profile?: string; length?: 'short' | 'detailed'; focus?: string; model?: string } // focus = what they said since Cue's last reply // image = JPEG data URL of the screen; profile = what the user told Cue about themselves
 export interface Quote { text: string; found: boolean }
 export interface Check { status: 'grounded' | 'unverified' | 'general'; quotes: Quote[]; note: string }
 export interface Recap { summary: string; actions: { text: string; quote?: string }[]; title: string }
@@ -61,7 +61,7 @@ export function askMessages(r: AskRequest, vision: boolean) {
   const transcript = transcriptText(r.lines) || '(nothing said yet)';
   const theirs = lastTheirTurn(r.lines);
   const task = r.mode === 'ask' ? (r.question ?? '').slice(0, 500)
-    : r.mode === 'say' && theirs ? `They just said: ${theirs.slice(-600)}\nWrite what I should say back.`
+    : r.mode === 'say' && theirs ? `They just said: ${theirs.slice(-600)}\n${r.focus && r.focus.trim() !== theirs.trim() ? `Their newest point, which the reply must answer (earlier parts were already answered): ${r.focus.slice(-400)}\n` : ''}Write what I should say back.`
     : MODES[r.mode].prompt;
   const text = `Transcript so far:\n${transcript}\n\nTask: ${task}`;
   const profile = r.profile?.trim().slice(0, 1000);

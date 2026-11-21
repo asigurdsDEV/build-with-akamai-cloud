@@ -38,7 +38,7 @@ func portIsOpen(_ port: Int) -> Bool {
 
 // Settings: local Ollama by default; ~/Library/Application Support/Cue/cue.env (KEY=VALUE lines) overrides, e.g. to use Akamai Cloud Inference.
 func serverEnv() -> [String: String] {
-    var env = ["AI_BASE_URL": "http://127.0.0.1:11434/v1", "AI_API_KEY": "ollama", "AI_MODEL": "gemma3:4b", "AI_VISION": "1", "PORT": String(port)]
+    var env = ["AI_BASE_URL": "http://127.0.0.1:11434/v1", "AI_API_KEY": "ollama", "AI_MODEL": "gemma3:12b", "AI_MODELS": "gemma3:4b", "AI_VISION": "1", "PORT": String(port)] // Smart by default; Fast in Settings
     if let text = try? String(contentsOf: settingsURL, encoding: .utf8) {
         for line in text.split(separator: "\n") where !line.hasPrefix("#") {
             let kv = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }

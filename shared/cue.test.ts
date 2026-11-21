@@ -72,6 +72,16 @@ describe('turns and auto-answer', () => {
   });
 });
 
+describe('new question while answering', () => {
+  it('points the reply at their newest point when earlier parts were already answered', () => {
+    const lines: Line[] = [{ who: 'them', text: 'Can you do it by Friday?', at: 0 }, { who: 'them', text: 'And what would it cost?', at: 1 }];
+    const user = askMessages({ mode: 'say', lines, focus: 'And what would it cost?' }, false)[1].content as string;
+    expect(user).toContain('They just said: Can you do it by Friday? And what would it cost?');
+    expect(user).toContain('Their newest point, which the reply must answer (earlier parts were already answered): And what would it cost?');
+    expect(askMessages({ mode: 'say', lines, focus: 'Can you do it by Friday? And what would it cost?' }, false)[1].content).not.toContain('newest point');
+  });
+});
+
 describe('recap', () => {
   it('parses fenced JSON and checks action quotes', () => {
     const r = parseRecap('```json\n{"title":"Q1 pilot","summary":"s","actions":[{"text":"Ship pilot","quote":"ship the pilot by March"},{"text":"Hire","quote":"we will hire two people"}]}\n```');

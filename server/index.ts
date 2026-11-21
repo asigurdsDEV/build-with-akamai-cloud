@@ -11,6 +11,8 @@ const env = process.env;
 const PORT = Number(env.PORT ?? 8787);
 const AI = env.AI_BASE_URL?.replace(/\/$/, '');
 const VISION = env.AI_VISION === '1';
+const MODELS = [...new Set([env.AI_MODEL, ...(env.AI_MODELS ?? '').split(',')].map(m => m?.trim()).filter(Boolean))] as string[]; // models the app may pick
+const pick = (m: unknown) => typeof m === 'string' && MODELS.includes(m) ? m : env.AI_MODEL;
 const OLLAMA = AI && /\/\/(127\.0\.0\.1|localhost):11434/.test(AI) ? AI.replace(/\/v1$/, '') : null; // a local Ollama: Cue can load and unload its model
 const S3 = env.S3_ENDPOINT && env.S3_BUCKET && env.S3_ACCESS_KEY && env.S3_SECRET_KEY
   ? { url: `${env.S3_ENDPOINT.replace(/\/$/, '')}/${env.S3_BUCKET}/recaps`, aws: new AwsClient({ accessKeyId: env.S3_ACCESS_KEY, secretAccessKey: env.S3_SECRET_KEY, service: 's3', region: env.S3_REGION ?? 'us-east-1' }) }
@@ -31,11 +33,12 @@ const validLines = (x: unknown): Line[] => Array.isArray(x) ? x.filter(l => l &&
 
 async function model(path: string, init: RequestInit) {
   if (!AI) throw new HttpError(503, 'AI_BASE_URL is not set');
-  const res = await fetch(AI + path, { ...init, headers: { authorization: `Bearer ${env.AI_API_KEY ?? ''}`, ...init.headers }, signal: AbortSignal.timeout(60_000) });
+  const signal = init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000);
+  const res = await fetch(AI + path, { ...init, headers: { authorization: `Bearer ${env.AI_API_KEY ?? ''}`, ...init.headers }, signal });
   if (!res.ok) throw new HttpError(502, `model ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return res;
 }
-const chat = (messages: unknown, stream: boolean, maxTokens = stream ? 300 : 900) => model('/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: env.AI_MODEL, messages, stream, max_tokens: maxTokens, temperature: 0.3 }) });
+const chat = (messages: unknown, stream: boolean, maxTokens = stream ? 300 : 900, signal?: AbortSignal, name = env.AI_MODEL) => model('/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: name, messages, stream, max_tokens: maxTokens, temperature: 0.3 }), signal });
 
 // POST /api/ask → streams the answer as plain text chunks.
 async function ask(req: IncomingMessage, res: ServerResponse) {
@@ -45,7 +48,11 @@ async function ask(req: IncomingMessage, res: ServerResponse) {
   if (typeof r.image !== 'string' || !r.image.startsWith('data:image/')) r.image = undefined;
   r.profile = typeof r.profile === 'string' ? r.profile.slice(0, 1000) : undefined;
   if (r.length !== 'detailed') r.length = 'short';
-  const upstream = await chat(askMessages(r, VISION), true, r.mode === 'say' ? 160 : 300);
+  r.focus = typeof r.focus === 'string' ? r.focus.slice(0, 1000) : undefined;
+  // When the app cancels this reply (a newer question came in), stop the model too, so the next reply doesn't wait behind it.
+  const cancel = new AbortController();
+  res.on('close', () => cancel.abort());
+  const upstream = await chat(askMessages(r, VISION), true, r.mode === 'say' ? 160 : 300, cancel.signal, pick(r.model));
   res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
   const decoder = new TextDecoder(); let buf = '';
   for await (const chunk of upstream.body as unknown as AsyncIterable<Uint8Array>) {
@@ -72,8 +79,9 @@ async function transcribe(req: IncomingMessage, res: ServerResponse) {
 
 // POST /api/recap { lines } → AI recap with checked quotes, saved to Object Storage when configured.
 async function recap(req: IncomingMessage, res: ServerResponse) {
-  const lines = validLines((await json<{ lines: unknown }>(req, 3_000_000)).lines);
-  const r = await chat(recapMessages(lines), false);
+  const body = await json<{ lines: unknown; model?: unknown }>(req, 3_000_000);
+  const lines = validLines(body.lines);
+  const r = await chat(recapMessages(lines), false, 900, undefined, pick(body.model));
   const raw = ((await r.json()) as { choices: { message: { content: string } }[] }).choices[0].message.content;
   let parsed;
   try { parsed = parseRecap(raw); } catch { throw new HttpError(502, 'model did not return a recap'); }
@@ -106,15 +114,16 @@ createServer(async (req, res) => {
   const url = req.url ?? '/';
   try {
     if (req.method === 'GET' && url === '/api/status') {
-      const loaded = OLLAMA ? await fetch(`${OLLAMA}/api/ps`).then(r => r.json()).then(j => j.models?.some((m: { name: string }) => m.name === env.AI_MODEL)).catch(() => false) : !!AI;
-      return send(res, 200, { ai: !!AI, model: AI ? env.AI_MODEL ?? '' : '', loaded, vision: VISION, stt: !!(AI && env.STT_MODEL), storage: !!S3 });
+      const loaded: string[] = OLLAMA ? await fetch(`${OLLAMA}/api/ps`).then(r => r.json()).then(j => (j.models ?? []).map((m: { name: string }) => m.name)).catch(() => []) : [];
+      const installed: string[] = OLLAMA ? await fetch(`${OLLAMA}/api/tags`).then(r => r.json()).then(j => (j.models ?? []).map((m: { name: string }) => m.name)).catch(() => []) : MODELS;
+      return send(res, 200, { ai: !!AI, model: AI ? env.AI_MODEL ?? '' : '', models: MODELS.filter(m => !OLLAMA || installed.includes(m)), loaded, vision: VISION, stt: !!(AI && env.STT_MODEL), storage: !!S3 });
     }
     if (req.method === 'POST' && url === '/api/unload') { // frees the model's memory (~3.4 GB for gemma3:4b) while Cue is hidden
-      if (OLLAMA) await fetch(`${OLLAMA}/api/generate`, { method: 'POST', body: JSON.stringify({ model: env.AI_MODEL, keep_alive: 0 }) }).catch(() => null);
+      if (OLLAMA) await Promise.all(MODELS.map(m => fetch(`${OLLAMA}/api/generate`, { method: 'POST', body: JSON.stringify({ model: m, keep_alive: 0 }) }).catch(() => null)));
       return send(res, 200, { ok: true });
     }
     if (req.method === 'POST' && url === '/api/ask') return await ask(req, res);
-    if (req.method === 'POST' && url === '/api/warm') { if (AI) await chat([{ role: 'user', content: 'hi' }], false, 1).catch(() => null); return send(res, 200, { ok: true }); } // loads the model so the first reply in a call is fast
+    if (req.method === 'POST' && url === '/api/warm') { const m = pick((await json<{ model?: unknown }>(req, 1000).catch(() => ({}) as { model?: unknown })).model); if (AI) await chat([{ role: 'user', content: 'hi' }], false, 1, undefined, m).catch(() => null); return send(res, 200, { ok: true }); } // loads the model so the first reply in a call is fast
     if (req.method === 'POST' && url === '/api/transcribe') return await transcribe(req, res);
     if (req.method === 'POST' && url === '/api/recap') return await recap(req, res);
     if (req.method === 'GET' && url.startsWith('/api/recap/')) return await getRecap(url.slice(11), res);
@@ -122,7 +131,7 @@ createServer(async (req, res) => {
     throw new HttpError(405, 'method not allowed');
   } catch (e) {
     const status = e instanceof HttpError ? e.status : 500;
-    if (status >= 500) console.error(e);
+    if (status >= 500 && (e as Error).name !== 'AbortError') console.error(e);
     if (res.headersSent) res.end(); else send(res, status, { error: (e as Error).message });
   }
 }).listen(PORT, () => console.log(`Cue on http://localhost:${PORT} · model ${AI ? env.AI_MODEL : 'not set'} · speech ${env.STT_MODEL ?? 'not set'} · storage ${S3 ? env.S3_BUCKET : 'not set'}`));

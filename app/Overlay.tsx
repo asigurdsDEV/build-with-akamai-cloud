@@ -8,10 +8,10 @@ interface Props {
   status: Status | null; sources: { you: boolean; them: boolean }; lines: Line[]; interim: { you: string; them: string }; answers: Answer[];
   recap: SavedRecap | 'loading' | null; notes: string[];
   toggleSource(who: Line['who']): void; toggleListen(): void; ask(mode: Mode, q?: string): void; endAndRecap(): void;
-  prefs: Prefs; setPrefs(p: Partial<Prefs>): void; clearSession(): void;
+  prefs: Prefs; setPrefs(p: Partial<Prefs>): void; chooseModel(m: string): void; clearSession(): void;
 }
 
-export function Overlay({ status, sources, lines, interim, answers, recap, notes, toggleSource, toggleListen, ask, endAndRecap, prefs, setPrefs, clearSession }: Props) {
+export function Overlay({ status, sources, lines, interim, answers, recap, notes, toggleSource, toggleListen, ask, endAndRecap, prefs, setPrefs, chooseModel, clearSession }: Props) {
   const [q, setQ] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef(settingsOpen); settingsRef.current = settingsOpen;
@@ -41,7 +41,7 @@ export function Overlay({ status, sources, lines, interim, answers, recap, notes
         </div>
       </header>
 
-      {settingsOpen ? <Settings status={status} prefs={prefs} setPrefs={setPrefs} clearSession={() => { clearSession(); setSettingsOpen(false); }} /> : <>
+      {settingsOpen ? <Settings status={status} prefs={prefs} setPrefs={setPrefs} chooseModel={chooseModel} clearSession={() => { clearSession(); setSettingsOpen(false); }} /> : <>
       <form className="ov-ask" onSubmit={e => { e.preventDefault(); if (q.trim()) { ask('ask', q.trim()); setQ(''); } }}>
         <input ref={input} value={q} onChange={e => setQ(e.target.value)} placeholder={ai ? 'Ask about your screen or call…' : 'AI is offline'} aria-label="Ask Cue" disabled={!ai} maxLength={500} />
         <kbd title="What should I say?">⌘↵</kbd>
@@ -60,7 +60,7 @@ export function Overlay({ status, sources, lines, interim, answers, recap, notes
             <article key={a.id} className={`ov-answer ${i === 0 ? 'latest' : ''} ${a.auto ? 'auto' : ''}`}>
               <h3>{a.label}</h3>
               {a.error ? <p className="error">{a.error}</p> : <AnswerText text={a.text} done={a.done} />}
-              {a.check && <CheckBadge check={a.check} />}
+              {a.stopped ? <p className="ov-stopped">Stopped for a newer question</p> : a.check && <CheckBadge check={a.check} />}
             </article>
           ))
           : recap !== 'loading' && (
@@ -90,7 +90,9 @@ export function Overlay({ status, sources, lines, interim, answers, recap, notes
   );
 }
 
-function Settings({ status, prefs, setPrefs, clearSession }: { status: Status | null; prefs: Prefs; setPrefs(p: Partial<Prefs>): void; clearSession(): void }) {
+const modelLabel = (m: string) => ({ 'gemma3:4b': 'Fast · 4B', 'gemma3:12b': 'Smart · 12B' } as Record<string, string>)[m] ?? m;
+
+function Settings({ status, prefs, setPrefs, chooseModel, clearSession }: { status: Status | null; prefs: Prefs; setPrefs(p: Partial<Prefs>): void; chooseModel(m: string): void; clearSession(): void }) {
   const [sys, setSys] = useState<NativeSettings | null>(null);
   useEffect(() => onNativeSettings(setSys), []);
   const set = (key: keyof NativeSettings, value: boolean | string) => { setSys(s => s && { ...s, [key]: value }); nativeSend({ type: 'set', key, value }); };
@@ -104,6 +106,10 @@ function Settings({ status, prefs, setPrefs, clearSession }: { status: Status | 
       </section>
       <section>
         <h2>Answers</h2>
+        {(status?.models?.length ?? 0) > 1 && <>
+          <Segmented label="Model" value={prefs.model || status!.model || ''} options={status!.models!.map(m => [m, modelLabel(m)] as [string, string])} onChange={chooseModel} />
+          <p className="ov-hint">Smart writes better replies; Fast answers sooner and uses less memory.</p>
+        </>}
         <Segmented label="Answer length" value={prefs.length} options={[['short', 'Short'], ['detailed', 'Detailed']]} onChange={v => setPrefs({ length: v as Prefs['length'] })} />
       </section>
       <section>
@@ -124,7 +130,7 @@ function Settings({ status, prefs, setPrefs, clearSession }: { status: Status | 
         <p className="ov-row"><span>What should I say?</span><kbd>⌘↵</kbd></p>
         <button className="ov-wide" onClick={clearSession}>Clear transcript & answers</button>
       </section>
-      <p className="ov-hint ov-model">{status?.ai ? `Model: ${status.model || 'connected'}${status.vision ? ' · sees your screen' : ''}` : 'Model: offline'}</p>
+      <p className="ov-hint ov-model">{status?.ai ? `Model: ${prefs.model || status.model || 'connected'}${status.vision ? ' · sees your screen' : ''}` : 'Model: offline'}</p>
       <p className="ov-hint ov-model">The model loads while Cue is open or listening, and unloads 90 s after you hide it. Quitting Cue stops it completely.</p>
     </main>
   );

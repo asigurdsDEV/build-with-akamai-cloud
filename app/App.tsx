@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { MODES, checkAnswer, isQuestion, lastTheirTurn, type Check, type Line, type Mode, type SavedRecap } from '../shared/cue.ts';
-import { canCaptionMic, captionMic, grabFrame, native, nativeCaptions, nativeFrame, onNativeEvents, recordTabAudio, shareScreen } from './capture.ts';
+import { canCaptionMic, captionMic, grabFrame, native, nativeCaptions, nativeFrame, onNativeEvents, onNativeVisible, recordTabAudio, shareScreen } from './capture.ts';
 import { Overlay } from './Overlay.tsx';
 
 export interface Prefs { profile: string; length: 'short' | 'detailed'; auto: boolean }
 const DEFAULT_PREFS: Prefs = { profile: '', length: 'short', auto: true };
 const loadPrefs = (): Prefs => { try { return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem('cue.prefs') ?? '{}') }; } catch { return DEFAULT_PREFS; } };
-export interface Status { model?: string; ai: boolean; vision: boolean; stt: boolean; storage: boolean }
+export interface Status { model?: string; loaded?: boolean; ai: boolean; vision: boolean; stt: boolean; storage: boolean }
 export interface Answer { id: number; label: string; text: string; done: boolean; auto?: boolean; check?: Check; error?: string }
 type PipWindow = Window & typeof globalThis;
 const pipApi = (window as unknown as { documentPictureInPicture?: { requestWindow(o: { width: number; height: number }): Promise<PipWindow> } }).documentPictureInPicture;
@@ -43,8 +43,24 @@ function Session() {
   useEffect(() => { fetch('/api/status').then(r => r.json()).then(setStatus).catch(() => setStatus({ ai: false, vision: false, stt: false, storage: false })); }, []);
   const addLine = (who: Line['who'], text: string) => text && setLines(ls => [...ls, { who, text, at: Math.round(performance.now() - t0.current) }]);
   const note = (msg: string) => setNotes(n => n.includes(msg) ? n : [...n, msg]);
-  const warm = () => { fetch('/api/warm', { method: 'POST' }).catch(() => {}); }; // keep the model loaded so replies start instantly
-  useEffect(() => { warm(); if (native) addEventListener('focus', warm); return () => removeEventListener('focus', warm); }, []);
+  // The model is loaded only while Cue is on screen or listening; 90 s after it's hidden and quiet, it's unloaded to free memory.
+  const warm = () => { fetch('/api/warm', { method: 'POST' }).catch(() => {}); };
+  const shown = useRef(true);
+  const sleepTimer = useRef(0);
+  const liveRef = useRef(live); liveRef.current = live;
+  const maybeSleep = () => {
+    window.clearTimeout(sleepTimer.current);
+    if (!shown.current && !liveRef.current) sleepTimer.current = window.setTimeout(() => { fetch('/api/unload', { method: 'POST' }).catch(() => {}); }, 90_000);
+  };
+  const setShown = (v: boolean) => { shown.current = v; if (v) { window.clearTimeout(sleepTimer.current); warm(); } else maybeSleep(); };
+  useEffect(() => {
+    warm();
+    if (native) onNativeVisible(setShown);
+    const onVis = () => setShown(document.visibilityState === 'visible');
+    if (!native) document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+  useEffect(() => { if (!live) maybeSleep(); }, [live]);
   const sourceOff = (who: Line['who']) => { delete sourceStops.current[who]; setSources(s => ({ ...s, [who]: false })); setInterim(i => ({ ...i, [who]: '' })); };
   useEffect(() => { if (native) onNativeEvents(note, sourceOff); }, []);
   useEffect(() => { if (native) setLive(sources.you || sources.them); }, [sources]);

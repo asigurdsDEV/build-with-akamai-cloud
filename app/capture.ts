@@ -66,15 +66,17 @@ export const native = !!nativeHandler || new URLSearchParams(location.search).ha
 type Who = 'you' | 'them';
 export interface NativeSettings { hide: boolean; login: boolean; glass: 'regular' | 'clear' }
 let lastSettings: NativeSettings | undefined; // the shell may send these before React mounts
-const hooks: { caption: Partial<Record<Who, (final: string, interim: string) => void>>; error?: (msg: string) => void; stopped?: (who: Who) => void; settings?: (s: NativeSettings) => void; frames: Map<number, (url?: string) => void> } = { caption: {}, frames: new Map() };
+const hooks: { caption: Partial<Record<Who, (final: string, interim: string) => void>>; error?: (msg: string) => void; stopped?: (who: Who) => void; settings?: (s: NativeSettings) => void; visible?: (v: boolean) => void; frames: Map<number, (url?: string) => void> } = { caption: {}, frames: new Map() };
 (window as unknown as { __cue: unknown }).__cue = {
   caption: (who: Who, final: string, interim: string) => hooks.caption[who]?.(final, interim),
   stopped: (who: Who) => { hooks.caption[who] = undefined; hooks.stopped?.(who); },
   error: (msg: string) => hooks.error?.(msg),
   settings: (s: NativeSettings) => { lastSettings = s; hooks.settings?.(s); },
+  visible: (v: boolean) => hooks.visible?.(v),
   frame: (id: number, url?: string) => { hooks.frames.get(id)?.(url || undefined); hooks.frames.delete(id); },
 };
 export const onNativeEvents = (error: (msg: string) => void, stopped: (who: Who) => void) => { hooks.error = error; hooks.stopped = stopped; };
+export const onNativeVisible = (fn: (v: boolean) => void) => { hooks.visible = fn; };
 export const onNativeSettings = (fn: (s: NativeSettings) => void) => { hooks.settings = fn; if (lastSettings) fn(lastSettings); };
 export const nativeSend = (msg: { type: string; [k: string]: unknown }) => nativeHandler?.postMessage(msg);
 

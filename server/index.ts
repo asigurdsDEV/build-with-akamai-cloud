@@ -11,6 +11,7 @@ const env = process.env;
 const PORT = Number(env.PORT ?? 8787);
 const AI = env.AI_BASE_URL?.replace(/\/$/, '');
 const VISION = env.AI_VISION === '1';
+const OLLAMA = AI && /\/\/(127\.0\.0\.1|localhost):11434/.test(AI) ? AI.replace(/\/v1$/, '') : null; // a local Ollama: Cue can load and unload its model
 const S3 = env.S3_ENDPOINT && env.S3_BUCKET && env.S3_ACCESS_KEY && env.S3_SECRET_KEY
   ? { url: `${env.S3_ENDPOINT.replace(/\/$/, '')}/${env.S3_BUCKET}/recaps`, aws: new AwsClient({ accessKeyId: env.S3_ACCESS_KEY, secretAccessKey: env.S3_SECRET_KEY, service: 's3', region: env.S3_REGION ?? 'us-east-1' }) }
   : null;
@@ -104,7 +105,14 @@ async function staticFile(url: string, res: ServerResponse) {
 createServer(async (req, res) => {
   const url = req.url ?? '/';
   try {
-    if (req.method === 'GET' && url === '/api/status') return send(res, 200, { ai: !!AI, model: AI ? env.AI_MODEL ?? '' : '', vision: VISION, stt: !!(AI && env.STT_MODEL), storage: !!S3 });
+    if (req.method === 'GET' && url === '/api/status') {
+      const loaded = OLLAMA ? await fetch(`${OLLAMA}/api/ps`).then(r => r.json()).then(j => j.models?.some((m: { name: string }) => m.name === env.AI_MODEL)).catch(() => false) : !!AI;
+      return send(res, 200, { ai: !!AI, model: AI ? env.AI_MODEL ?? '' : '', loaded, vision: VISION, stt: !!(AI && env.STT_MODEL), storage: !!S3 });
+    }
+    if (req.method === 'POST' && url === '/api/unload') { // frees the model's memory (~3.4 GB for gemma3:4b) while Cue is hidden
+      if (OLLAMA) await fetch(`${OLLAMA}/api/generate`, { method: 'POST', body: JSON.stringify({ model: env.AI_MODEL, keep_alive: 0 }) }).catch(() => null);
+      return send(res, 200, { ok: true });
+    }
     if (req.method === 'POST' && url === '/api/ask') return await ask(req, res);
     if (req.method === 'POST' && url === '/api/warm') { if (AI) await chat([{ role: 'user', content: 'hi' }], false, 1).catch(() => null); return send(res, 200, { ok: true }); } // loads the model so the first reply in a call is fast
     if (req.method === 'POST' && url === '/api/transcribe') return await transcribe(req, res);

@@ -11,6 +11,7 @@ import WebKit
 
 let info = Bundle.main.infoDictionary ?? [:]
 let webRoot = (Bundle.main.resourcePath ?? ".") + "/web" // server + built app, copied in by build.sh (so Cue never reads ~/Documents)
+let childrenURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Cue/children.pid")
 let settingsURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Cue/cue.env")
 let port = 8787
 let logURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Cue.log")
@@ -216,7 +217,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
 
     func applicationWillTerminate(_ notification: Notification) {
         captions.values.forEach { $0.stop() }
-        children.forEach { $0.terminate() }
+        children.forEach { $0.terminate() } // Ollama stops its model runner when it stops
+        try? FileManager.default.removeItem(at: childrenURL)
     }
 
     // MARK: backend
@@ -229,13 +231,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         p.environment = ProcessInfo.processInfo.environment.merging(env) { $1 }
         if !FileManager.default.fileExists(atPath: logURL.path) { FileManager.default.createFile(atPath: logURL.path, contents: nil) }
         if let log = try? FileHandle(forWritingTo: logURL) { log.seekToEndOfFile(); p.standardOutput = log; p.standardError = log }
-        do { try p.run(); children.append(p) } catch { NSLog("Cue: couldn't start \(path): \(error)") }
+        do { try p.run(); children.append(p); saveChildren() } catch { NSLog("Cue: couldn't start \(path): \(error)") }
+    }
+
+    /// Remembers the processes Cue started, so a crash or force-quit doesn't leave Ollama holding gigabytes of memory.
+    func saveChildren() {
+        try? FileManager.default.createDirectory(at: childrenURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? children.map { String($0.processIdentifier) }.joined(separator: "\n").write(to: childrenURL, atomically: true, encoding: .utf8)
+    }
+    /// Stops anything a previous Cue started and didn't get to stop (only Ollama or Cue's own server, checked by name).
+    func stopLeftovers() {
+        guard let text = try? String(contentsOf: childrenURL, encoding: .utf8) else { return }
+        for pid in text.split(separator: "\n").compactMap({ pid_t($0) }) {
+            let ps = Process(); let out = Pipe()
+            ps.executableURL = URL(fileURLWithPath: "/bin/ps"); ps.arguments = ["-p", String(pid), "-o", "command="]; ps.standardOutput = out
+            try? ps.run(); ps.waitUntilExit()
+            let command = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            if command.contains("ollama serve") || command.contains("server/index.ts") { kill(pid, SIGTERM); log("stopped leftover \(pid)") }
+        }
+        try? FileManager.default.removeItem(at: childrenURL)
+        usleep(300_000)
     }
 
     func startBackendThenLoad() {
+        stopLeftovers()
         let env = serverEnv()
         if env["AI_BASE_URL"]?.contains(":11434") == true, !portIsOpen(11434), let ollama = info["CueOllama"] as? String, FileManager.default.fileExists(atPath: ollama) {
-            spawn(ollama, ["serve"], env: ["OLLAMA_KEEP_ALIVE": "2h"]) // keep the model in memory between replies
+            spawn(ollama, ["serve"], env: ["OLLAMA_KEEP_ALIVE": "30m"]) // the page unloads it sooner when Cue is hidden
         }
         if !portIsOpen(port) { spawn(info["CueNode"] as? String ?? "/opt/homebrew/bin/node", ["server/index.ts"], env: env) }
         DispatchQueue.global().async {
@@ -290,9 +312,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         panel.makeKey()
         panel.makeFirstResponder(web)
         panel.invalidateShadow()
-        web.evaluateJavaScript("window.__cueFocus && window.__cueFocus()")
+        web.evaluateJavaScript("window.__cueFocus && window.__cueFocus(); window.__cue && window.__cue.visible(true)")
     }
-    func hide() { panel.orderOut(nil) }
+    func hide() {
+        panel.orderOut(nil)
+        web.evaluateJavaScript("window.__cue && window.__cue.visible(false)")
+    }
     @objc func toggle() { panel.isVisible && panel.isKeyWindow ? hide() : show() }
     @objc func reload() { web.reload() }
     /// Opt-in: ask screen sharing and recording apps to leave the panel out. Each capture app decides whether it honors this.

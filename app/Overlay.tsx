@@ -125,6 +125,7 @@ function Settings({ status, prefs, setPrefs, clearSession }: { status: Status | 
         <button className="ov-wide" onClick={clearSession}>Clear transcript & answers</button>
       </section>
       <p className="ov-hint ov-model">{status?.ai ? `Model: ${status.model || 'connected'}${status.vision ? ' · sees your screen' : ''}` : 'Model: offline'}</p>
+      <p className="ov-hint ov-model">The model loads while Cue is open or listening, and unloads 90 s after you hide it. Quitting Cue stops it completely.</p>
     </main>
   );
 }

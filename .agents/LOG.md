@@ -21,3 +21,4 @@ Append only. One line per meaningful action. Newest at the bottom.
 2026-11-20 16:53 | claude@aiden | cue-app | Settings page: about-you context, answer length, glass style, hide from sharing, open at login, clear session; model shown
 2026-11-20 20:45 | claude@aiden | cue-app | SpeechAnalyzer captions (sentences land ~0.05 s after they end), Listen = both sources, auto-suggest replies on questions/turns, replies aimed at their latest turn
 2026-11-20 21:31 | claude@aiden | cue-app | faster replies (no screenshot for replies, warm model, 0.3 s auto delay, 160-token cap) + reply prompt with rules/examples and a Say: line; pinned signing cert
+2026-11-20 21:36 | claude@aiden | cue-app | model only loaded while panel open or listening (unload after 90 s hidden), Ollama stopped on quit, leftover cleanup after crashes

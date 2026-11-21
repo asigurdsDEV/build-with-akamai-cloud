@@ -39,6 +39,12 @@ describe('prompts', () => {
     expect(typeof askMessages({ mode: 'say', lines, image: img }, false)[1].content).toBe('string');
     expect(JSON.stringify(askMessages({ mode: 'say', lines, image: img }, true)[1].content)).toContain(img);
   });
+  it('adds the user profile and answer length to the system prompt', () => {
+    const sys = askMessages({ mode: 'say', lines, profile: 'I sell solar panels', length: 'detailed' }, false)[0].content as string;
+    expect(sys).toContain('I sell solar panels');
+    expect(sys).toContain('up to 200 words');
+    expect(askMessages({ mode: 'say', lines }, false)[0].content).toContain('under 80 words');
+  });
   it('caps a custom question', () => {
     const m = askMessages({ mode: 'ask', question: 'x'.repeat(2000), lines }, false);
     expect((m[1].content as string).length).toBeLessThan(1000);

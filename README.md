@@ -71,7 +71,7 @@ brew install ollama && ollama pull gemma3:4b   # once
 ./desktop/build.sh                              # builds ~/Applications/Cue.app and opens it
 ```
 
-**Hide from Screen Sharing** in the ✨ menu (off by default) asks screen sharing and recording apps to leave the panel out; each capture app decides whether it honors that. The first time, macOS asks for Microphone, Speech Recognition and Screen Recording. To use Akamai Cloud Inference or Object Storage instead, put the `.env.example` settings in `~/Library/Application Support/Cue/cue.env`. Logs: `~/Library/Logs/Cue.log`. To preview the panel layout in a browser, open `http://localhost:8787/?overlay`.
+The **gear** opens Settings: *About you* (context Cue uses in every answer, stored on this Mac), answer length (short / detailed), glass style (frosted / clear), Hide from Screen Sharing, Open at Login, and Clear session. **Hide from Screen Sharing** (also in the ✨ menu, off by default) asks screen sharing and recording apps to leave the panel out; each capture app decides whether it honors that. The first time, macOS asks for Microphone, Speech Recognition and Screen Recording. To use Akamai Cloud Inference or Object Storage instead, put the `.env.example` settings in `~/Library/Application Support/Cue/cue.env`. Logs: `~/Library/Logs/Cue.log`. To preview the panel layout in a browser, open `http://localhost:8787/?overlay`.
 
 ### Deploy on Akamai Cloud
 

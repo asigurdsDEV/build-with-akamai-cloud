@@ -64,14 +64,18 @@ type NativeHandler = { postMessage(msg: unknown): void };
 const nativeHandler = (window as unknown as { webkit?: { messageHandlers?: { cue?: NativeHandler } } }).webkit?.messageHandlers?.cue;
 export const native = !!nativeHandler || new URLSearchParams(location.search).has('overlay'); // ?overlay previews the Cue.app layout in a browser
 type Who = 'you' | 'them';
-const hooks: { caption: Partial<Record<Who, (final: string, interim: string) => void>>; error?: (msg: string) => void; stopped?: (who: Who) => void; frames: Map<number, (url?: string) => void> } = { caption: {}, frames: new Map() };
+export interface NativeSettings { hide: boolean; login: boolean; glass: 'regular' | 'clear' }
+let lastSettings: NativeSettings | undefined; // the shell may send these before React mounts
+const hooks: { caption: Partial<Record<Who, (final: string, interim: string) => void>>; error?: (msg: string) => void; stopped?: (who: Who) => void; settings?: (s: NativeSettings) => void; frames: Map<number, (url?: string) => void> } = { caption: {}, frames: new Map() };
 (window as unknown as { __cue: unknown }).__cue = {
   caption: (who: Who, final: string, interim: string) => hooks.caption[who]?.(final, interim),
   stopped: (who: Who) => { hooks.caption[who] = undefined; hooks.stopped?.(who); },
   error: (msg: string) => hooks.error?.(msg),
+  settings: (s: NativeSettings) => { lastSettings = s; hooks.settings?.(s); },
   frame: (id: number, url?: string) => { hooks.frames.get(id)?.(url || undefined); hooks.frames.delete(id); },
 };
 export const onNativeEvents = (error: (msg: string) => void, stopped: (who: Who) => void) => { hooks.error = error; hooks.stopped = stopped; };
+export const onNativeSettings = (fn: (s: NativeSettings) => void) => { hooks.settings = fn; if (lastSettings) fn(lastSettings); };
 export const nativeSend = (msg: { type: string; [k: string]: unknown }) => nativeHandler?.postMessage(msg);
 
 // "you" = your mic, "them" = what your Mac plays (the other people on a call). Each can be on or off on its own.

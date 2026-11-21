@@ -2,7 +2,7 @@
 
 export interface Line { who: 'you' | 'them'; text: string; at: number } // at = ms since session start
 export type Mode = 'say' | 'screen' | 'summary' | 'followups' | 'ask';
-export interface AskRequest { mode: Mode; question?: string; lines: Line[]; image?: string } // image = JPEG data URL of the shared screen
+export interface AskRequest { mode: Mode; question?: string; lines: Line[]; image?: string; profile?: string; length?: 'short' | 'detailed' } // image = JPEG data URL of the screen; profile = what the user told Cue about themselves
 export interface Quote { text: string; found: boolean }
 export interface Check { status: 'grounded' | 'unverified' | 'general'; quotes: Quote[]; note: string }
 export interface Recap { summary: string; actions: { text: string; quote?: string }[]; title: string }
@@ -22,9 +22,11 @@ export function askMessages(r: AskRequest, vision: boolean) {
   const transcript = transcriptText(r.lines) || '(nothing said yet)';
   const task = r.mode === 'ask' ? (r.question ?? '').slice(0, 500) : MODES[r.mode].prompt;
   const text = `Transcript so far:\n${transcript}\n\nTask: ${task}`;
+  const profile = r.profile?.trim().slice(0, 1000);
+  const brevity = r.length === 'detailed' ? 'Be thorough but organized: up to 200 words, short bullets welcome, no preamble.' : 'Be fast and brief: lead with the answer, under 80 words, plain text or short bullets, no preamble.';
   return [
     { role: 'system', content: `You are Cue, a live assistant during the user's call or work session. "Me" is the user, "Them" is everyone else.
-Be fast and brief: lead with the answer, under 80 words, plain text or short bullets, no preamble.
+${brevity}${profile ? `\nAbout the user (use it to tailor answers, never quote it as something said): ${profile}` : ''}
 When you rely on something said in the transcript, quote the exact words in "double quotes". Use double quotes for nothing else: write suggested lines without quote marks.
 If the answer isn't in the transcript or on the screen, say it's general knowledge. Never invent what someone said.` },
     { role: 'user', content: vision && r.image ? [{ type: 'text', text }, { type: 'image_url', image_url: { url: r.image } }] : text },

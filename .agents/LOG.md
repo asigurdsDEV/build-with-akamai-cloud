@@ -18,3 +18,4 @@ Append only. One line per meaningful action. Newest at the bottom.
 2026-11-20 16:33 | claude@aiden | cue-app | Cue.app: native Liquid Glass panel, ⌘\ hotkey, on-device captions, screen capture, bundled server, local Ollama gemma3:4b
 2026-11-20 16:43 | claude@aiden | cue-app | Them captions from system audio, separate Me/Them toggles, quote check ignores suggested lines
 2026-11-20 16:50 | claude@aiden | cue-app | opt-in Hide from Screen Sharing menu toggle (NSWindow.sharingType)
+2026-11-20 16:53 | claude@aiden | cue-app | Settings page: about-you context, answer length, glass style, hide from sharing, open at login, clear session; model shown

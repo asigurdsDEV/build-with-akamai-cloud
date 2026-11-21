@@ -227,6 +227,9 @@ enum Screen {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate {
     var panel: GlassPanel!
+    var glass: NSGlassEffectView!
+    var hideItem: NSMenuItem!
+    var loginItem: NSMenuItem!
     var web: WKWebView!
     var statusItem: NSStatusItem!
     var children: [Process] = []
@@ -300,10 +303,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         panel.setFrameAutosaveName("CuePanel") // remembers where you dragged it
         applySharing()
 
-        let glass = NSGlassEffectView(frame: NSRect(origin: .zero, size: size))
+        glass = NSGlassEffectView(frame: NSRect(origin: .zero, size: size))
         glass.cornerRadius = 28
-        glass.style = .regular
         glass.autoresizingMask = [.width, .height]
+        applyGlass()
 
         let config = WKWebViewConfiguration()
         config.userContentController.add(self, name: "cue")
@@ -336,20 +339,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     /// Opt-in: ask screen sharing and recording apps to leave the panel out. Each capture app decides whether it honors this.
     var hideFromCapture: Bool {
         get { UserDefaults.standard.bool(forKey: "hideFromCapture") }
-        set { UserDefaults.standard.set(newValue, forKey: "hideFromCapture"); applySharing() }
+        set { UserDefaults.standard.set(newValue, forKey: "hideFromCapture"); applySharing(); log("hide from screen sharing: \(newValue)") }
     }
     func applySharing() { panel.sharingType = hideFromCapture ? .none : .readOnly }
-    @objc func toggleHide(_ item: NSMenuItem) {
-        hideFromCapture.toggle()
-        item.state = hideFromCapture ? .on : .off
-        log("hide from screen sharing: \(hideFromCapture)")
+
+    var openAtLogin: Bool {
+        get { SMAppService.mainApp.status == .enabled }
+        set { do { try newValue ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() } catch { log("login item: \(error)") } }
     }
 
-    @objc func toggleLogin(_ item: NSMenuItem) {
-        let service = SMAppService.mainApp
-        do { if service.status == .enabled { try service.unregister() } else { try service.register() } } catch { NSLog("Cue: login item: \(error)") }
-        item.state = service.status == .enabled ? .on : .off
+    /// "regular" = frosted Liquid Glass, "clear" = see-through Liquid Glass.
+    var glassStyle: String {
+        get { UserDefaults.standard.string(forKey: "glassStyle") ?? "regular" }
+        set { UserDefaults.standard.set(newValue == "clear" ? "clear" : "regular", forKey: "glassStyle"); applyGlass() }
     }
+    func applyGlass() { glass.style = glassStyle == "clear" ? .clear : .regular }
+
+    /// Sends the native settings to the page and syncs the ✨ menu checkmarks.
+    func pushSettings() {
+        hideItem?.state = hideFromCapture ? .on : .off
+        loginItem?.state = openAtLogin ? .on : .off
+        web.evaluateJavaScript("window.__cue && window.__cue.settings({hide: \(hideFromCapture), login: \(openAtLogin), glass: \(jsString(glassStyle))})")
+    }
+
+    @objc func toggleHide(_ item: NSMenuItem) { hideFromCapture.toggle(); pushSettings() }
+    @objc func toggleLogin(_ item: NSMenuItem) { openAtLogin.toggle(); pushSettings() }
 
     func buildMenuBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -359,12 +373,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         showItem.keyEquivalentModifierMask = .command
         menu.addItem(showItem)
         menu.addItem(NSMenuItem(title: "Reload", action: #selector(reload), keyEquivalent: "r"))
-        let hide = NSMenuItem(title: "Hide from Screen Sharing", action: #selector(toggleHide(_:)), keyEquivalent: "")
-        hide.state = hideFromCapture ? .on : .off
-        menu.addItem(hide)
-        let login = NSMenuItem(title: "Open at Login", action: #selector(toggleLogin(_:)), keyEquivalent: "")
-        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        menu.addItem(login)
+        hideItem = NSMenuItem(title: "Hide from Screen Sharing", action: #selector(toggleHide(_:)), keyEquivalent: "")
+        hideItem.state = hideFromCapture ? .on : .off
+        menu.addItem(hideItem)
+        loginItem = NSMenuItem(title: "Open at Login", action: #selector(toggleLogin(_:)), keyEquivalent: "")
+        loginItem.state = openAtLogin ? .on : .off
+        menu.addItem(loginItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Cue", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         menu.items.forEach { if $0.action != #selector(NSApplication.terminate(_:)) { $0.target = self } }
@@ -377,6 +391,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
         switch type {
         case "hide": hide()
+        case "set":
+            switch body["key"] as? String {
+            case "hide": hideFromCapture = body["value"] as? Bool ?? false
+            case "login": openAtLogin = body["value"] as? Bool ?? false
+            case "glass": glassStyle = body["value"] as? String ?? "regular"
+            default: break
+            }
+            pushSettings()
         case "listen":
             guard let c = captions[body["source"] as? String ?? "you"] else { return }
             (body["on"] as? Bool ?? false) ? c.start() : c.stop()
@@ -394,6 +416,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         }
     }
 
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { pushSettings() }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { showError(error) }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { showError(error) }
     func showError(_ error: Error) {

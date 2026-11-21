@@ -42,6 +42,8 @@ async function ask(req: IncomingMessage, res: ServerResponse) {
   if (!['say', 'screen', 'summary', 'followups', 'ask'].includes(r.mode)) throw new HttpError(400, 'bad mode');
   r.lines = validLines(r.lines);
   if (typeof r.image !== 'string' || !r.image.startsWith('data:image/')) r.image = undefined;
+  r.profile = typeof r.profile === 'string' ? r.profile.slice(0, 1000) : undefined;
+  if (r.length !== 'detailed') r.length = 'short';
   const upstream = await chat(askMessages(r, VISION), true);
   res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
   const decoder = new TextDecoder(); let buf = '';
@@ -102,7 +104,7 @@ async function staticFile(url: string, res: ServerResponse) {
 createServer(async (req, res) => {
   const url = req.url ?? '/';
   try {
-    if (req.method === 'GET' && url === '/api/status') return send(res, 200, { ai: !!AI, vision: VISION, stt: !!(AI && env.STT_MODEL), storage: !!S3 });
+    if (req.method === 'GET' && url === '/api/status') return send(res, 200, { ai: !!AI, model: AI ? env.AI_MODEL ?? '' : '', vision: VISION, stt: !!(AI && env.STT_MODEL), storage: !!S3 });
     if (req.method === 'POST' && url === '/api/ask') return await ask(req, res);
     if (req.method === 'POST' && url === '/api/transcribe') return await transcribe(req, res);
     if (req.method === 'POST' && url === '/api/recap') return await recap(req, res);

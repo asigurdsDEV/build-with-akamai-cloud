@@ -4,7 +4,9 @@ import { MODES, checkAnswer, type Check, type Line, type Mode, type SavedRecap }
 import { canCaptionMic, captionMic, grabFrame, native, nativeCaptions, nativeFrame, onNativeEvents, recordTabAudio, shareScreen } from './capture.ts';
 import { Overlay } from './Overlay.tsx';
 
-export interface Status { ai: boolean; vision: boolean; stt: boolean; storage: boolean }
+export interface Prefs { profile: string; length: 'short' | 'detailed' }
+const loadPrefs = (): Prefs => { try { return { profile: '', length: 'short', ...JSON.parse(localStorage.getItem('cue.prefs') ?? '{}') }; } catch { return { profile: '', length: 'short' }; } };
+export interface Status { model?: string; ai: boolean; vision: boolean; stt: boolean; storage: boolean }
 export interface Answer { id: number; label: string; text: string; done: boolean; check?: Check; error?: string }
 type PipWindow = Window & typeof globalThis;
 const pipApi = (window as unknown as { documentPictureInPicture?: { requestWindow(o: { width: number; height: number }): Promise<PipWindow> } }).documentPictureInPicture;
@@ -26,6 +28,9 @@ function Session() {
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [recap, setRecap] = useState<SavedRecap | 'loading' | null>(null);
   const [pip, setPip] = useState<PipWindow | null>(null);
+  const [prefs, setPrefsState] = useState<Prefs>(loadPrefs);
+  const prefsRef = useRef(prefs); prefsRef.current = prefs;
+  const setPrefs = (p: Partial<Prefs>) => setPrefsState(old => { const next = { ...old, ...p }; try { localStorage.setItem('cue.prefs', JSON.stringify(next)); } catch { /* private mode: keep in memory */ } return next; });
   const linesRef = useRef(lines); linesRef.current = lines;
   const stops = useRef<(() => void)[]>([]);
   const t0 = useRef(0);
@@ -77,7 +82,7 @@ function Session() {
     setAnswers(a => [{ id, label, text: '', done: false }, ...a]);
     try {
       const image = !status?.vision ? undefined : native ? await nativeFrame() : screen ? await grabFrame(screen) : undefined;
-      const res = await fetch('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode, question, lines: linesRef.current, image }) });
+      const res = await fetch('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode, question, lines: linesRef.current, image, ...prefsRef.current }) });
       if (!res.ok || !res.body) throw new Error((await res.json().catch(() => null))?.error ?? `error ${res.status}`);
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
       let text = '';
@@ -112,7 +117,8 @@ function Session() {
     return () => targets.forEach(t => t.removeEventListener('keydown', onKey));
   });
 
-  if (native) return <Overlay {...{ status, sources, lines, interim, answers, recap, notes, toggleSource, ask, endAndRecap }} />;
+  const clearSession = () => { stop(); setLines([]); setAnswers([]); setRecap(null); setNotes([]); t0.current = 0; };
+  if (native) return <Overlay {...{ status, sources, lines, interim, answers, recap, notes, toggleSource, ask, endAndRecap, prefs, setPrefs, clearSession }} />;
   const panel = <AskPanel answers={answers} disabled={!status?.ai} onAsk={ask} />;
 
   return (
